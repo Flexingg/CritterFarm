@@ -29,9 +29,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -57,8 +62,22 @@ fun FarmScreen(
     onOpenHistory: (GameZone?) -> Unit,
     onOpenBarn: () -> Unit,
     onOpenBadges: () -> Unit,
+    onOpenDecor: () -> Unit,
+    onOpenRecap: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    val haptics = LocalHapticFeedback.current
+
+    // A burst counter rather than a boolean: each celebration should fire its own confetti, so the
+    // trigger has to *change*, not just be true.
+    var burst by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(uiState.celebration) {
+        if (uiState.celebration != null) {
+            burst++
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
 
     LaunchedEffect(uiState.snackbarMessage) {
         val message = uiState.snackbarMessage ?: return@LaunchedEffect
@@ -70,14 +89,15 @@ fun FarmScreen(
         CelebrationModal(result = celebration, onDismiss = { onIntent(FarmIntent.DismissCelebration) })
     }
 
-    Scaffold(
-        snackbarHost = {
-            SnackbarHost(snackbarHostState) { data ->
-                Snackbar(snackbarData = data, shape = RoundedCornerShape(16.dp))
-            }
-        },
-    ) { padding ->
-        when {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            snackbarHost = {
+                SnackbarHost(snackbarHostState) { data ->
+                    Snackbar(snackbarData = data, shape = RoundedCornerShape(16.dp))
+                }
+            },
+        ) { padding ->
+            when {
             uiState.isLoading -> LoadingState(padding)
             uiState.critter == null -> EmptyState(padding, onRetry = { onIntent(FarmIntent.Refresh) })
             else -> FarmContent(
@@ -104,8 +124,14 @@ fun FarmScreen(
                 onOpenHistory = onOpenHistory,
                 onOpenBarn = onOpenBarn,
                 onOpenBadges = onOpenBadges,
+                onOpenDecor = onOpenDecor,
+                onOpenRecap = onOpenRecap,
             )
         }
+        }
+
+        // Drawn over the whole screen on a big moment, and only then — it renders nothing when idle.
+        ConfettiBurst(trigger = burst, modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -168,6 +194,8 @@ private fun FarmContent(
     onOpenHistory: (GameZone?) -> Unit,
     onOpenBarn: () -> Unit,
     onOpenBadges: () -> Unit,
+    onOpenDecor: () -> Unit,
+    onOpenRecap: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(
@@ -228,8 +256,16 @@ private fun FarmContent(
             }
 
             item {
-                OutlinedButton(onClick = onOpenBadges, modifier = Modifier.fillMaxWidth()) {
-                    Text("🎖  Badges")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onOpenBadges, modifier = Modifier.weight(1f)) {
+                        Text("🎖  Badges")
+                    }
+                    OutlinedButton(onClick = onOpenDecor, modifier = Modifier.weight(1f)) {
+                        Text("🌻  Decor")
+                    }
+                    OutlinedButton(onClick = onOpenRecap, modifier = Modifier.weight(1f)) {
+                        Text("📅  Week")
+                    }
                 }
             }
 

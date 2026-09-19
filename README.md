@@ -54,8 +54,8 @@ answers the same three questions:
 
 ## Screenshots
 
-Captured from the `critterfarm_api35` emulator (Android 15) running **v1.4**. The local database
-was seeded with demo days so the heatmap, shop, barn, quests and badges have something to show — the emulator has
+Captured from the `critterfarm_api35` emulator (Android 15) running **v1.5**. The local database
+was seeded with demo days so the heatmap, shop, barn, quests, badges and decorations have something to show — the emulator has
 no Health Connect data, so these are not real user stats:
 
 | Sprout wearing a bought hat | The Barn Shop | Claim + streak payout | History heatmap |
@@ -73,6 +73,12 @@ no Health Connect data, so these are not real user stats:
 | Today's quests | Badges (16 / 19) | Per-zone streak chips |
 |---|---|---|
 | ![quests](docs/screenshots/12-v14-quests.png) | ![badges](docs/screenshots/13-v14-badges.png) | ![streaks](docs/screenshots/14-v14-streak-chips.png) |
+
+**v1.5 — decorate the farm, review the week:**
+
+| Decorating the farm | The 6x4 placement grid | Your week on the farm |
+|---|---|---|
+| ![decor](docs/screenshots/15-v15-decor.png) | ![scene](docs/screenshots/16-v15-decor-placed.png) | ![recap](docs/screenshots/17-v15-recap.png) |
 
 Earlier layout shots (v1.0 onboarding/navigation) are `01`–`03` in the same folder.
 
@@ -172,6 +178,34 @@ bar, because the next one should always feel close.
 Still honest: quests pay coins and treats, never health. Nothing here can be bought, and no quest
 asks you to eat less.
 
+## Decorating the farm
+
+Eleven decorations from **100 coins to 1,500**, laid out on a fixed **6 x 4 grid** with the critter
+standing in the middle. **Placing is buying** — there is no separate inventory to reconcile, so you
+can never own something you cannot see, and the price is charged per copy. Tapping a square that is
+already taken clears it (no refund; the screen says so).
+
+A square physically cannot hold two things: the cell index is the table's primary key, so
+"occupied" is a database constraint rather than a rule the UI has to be trusted to remember.
+
+Decorations are **cosmetic and always will be** — a pretty farm is not progress, and nothing here
+changes what the game rewards. Eleven items at 100 steps per coin means the farmhouse is a quarter
+of a million steps of wandering, made visible.
+
+## The weekly recap
+
+Sunday-to-Saturday, with the week before it for context: totals, six week-over-week comparisons with
+direction arrows, and two to four highlights. It is deliberately written so that a **thin week still
+reads kindly** — there is a unit test asserting the copy never contains "fail", "bad", "lazy" or
+"should", and another asserting it never mentions losing weight. The share button sends a short
+plain-text summary (no images, no permissions, no weight).
+
+## Juice
+
+Haptics on the big moments (chest claim, feeding, purchases, evolutions, hatching) and a ~20-particle
+Canvas confetti burst for claims and evolutions. The burst draws nothing at all when idle, allocates
+nothing inside the draw loop, and never blocks the dialog it celebrates.
+
 ## Architecture
 
 Clean Architecture-ish, MVI on the UI layer:
@@ -219,8 +253,8 @@ A signed release APK is published — no toolchain, no Android Studio:
 
 | Where | What |
 |---|---|
-| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.4-release.apk` (recommended) |
-| **In this repo** | [`dist/CritterFarm-1.4-release.apk`](dist/CritterFarm-1.4-release.apk) |
+| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.5-release.apk` (recommended) |
+| **In this repo** | [`dist/CritterFarm-1.5-release.apk`](dist/CritterFarm-1.5-release.apk) |
 
 Install: allow "install unknown apps" for your browser/file manager → open the APK → launch
 **CritterFarm**. Health Connect ships with Android 14+; on older devices grab it from the Play
@@ -229,7 +263,7 @@ sleepy "Dormant Zones".
 
 ```bash
 # confirm you got the same bytes we built
-sha256sum CritterFarm-1.4-release.apk     # compare to dist/CritterFarm-1.4-release.apk.sha256
+sha256sum CritterFarm-1.5-release.apk     # compare to dist/CritterFarm-1.5-release.apk.sha256
 ```
 
 The release APK is signed with a **4096-bit RSA** key (`CN=CritterFarm`, APK Signature Scheme

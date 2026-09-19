@@ -20,6 +20,9 @@ import com.critterfarm.ui.badges.BadgesViewModelFactory
 import com.critterfarm.ui.barn.BarnScreen
 import com.critterfarm.ui.barn.BarnViewModel
 import com.critterfarm.ui.barn.BarnViewModelFactory
+import com.critterfarm.ui.decor.DecorScreen
+import com.critterfarm.ui.decor.DecorViewModel
+import com.critterfarm.ui.decor.DecorViewModelFactory
 import com.critterfarm.ui.farm.FarmScreen
 import com.critterfarm.ui.farm.FarmViewModel
 import com.critterfarm.ui.farm.FarmViewModelFactory
@@ -27,6 +30,9 @@ import com.critterfarm.ui.history.HistoryScreen
 import com.critterfarm.ui.history.HistoryViewModel
 import com.critterfarm.ui.history.HistoryViewModelFactory
 import com.critterfarm.ui.onboarding.OnboardingScreen
+import com.critterfarm.ui.recap.RecapScreen
+import com.critterfarm.ui.recap.RecapViewModel
+import com.critterfarm.ui.recap.RecapViewModelFactory
 import com.critterfarm.ui.shop.ShopScreen
 import com.critterfarm.ui.shop.ShopViewModel
 import com.critterfarm.ui.shop.ShopViewModelFactory
@@ -39,6 +45,8 @@ private const val ROUTE_SHOP = "shop"
 private const val ROUTE_BARN = "barn"
 private const val ROUTE_HISTORY = "history"
 private const val ROUTE_BADGES = "badges"
+private const val ROUTE_DECOR = "decor"
+private const val ROUTE_RECAP = "recap"
 private const val ARG_FOCUS = "focus"
 
 class MainActivity : ComponentActivity() {
@@ -87,6 +95,31 @@ class MainActivity : ComponentActivity() {
                             },
                             onOpenBarn = { navController.navigate(ROUTE_BARN) },
                             onOpenBadges = { navController.navigate(ROUTE_BADGES) },
+                            onOpenDecor = { navController.navigate(ROUTE_DECOR) },
+                            onOpenRecap = { navController.navigate(ROUTE_RECAP) },
+                        )
+                    }
+
+                    composable(ROUTE_DECOR) {
+                        val viewModel: DecorViewModel = viewModel(
+                            factory = DecorViewModelFactory(app.gameRepository),
+                        )
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        DecorScreen(
+                            uiState = uiState,
+                            onIntent = viewModel::onIntent,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+
+                    composable(ROUTE_RECAP) {
+                        val viewModel: RecapViewModel = viewModel(
+                            factory = RecapViewModelFactory(app.gameRepository),
+                        )
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        RecapScreen(
+                            uiState = uiState,
+                            onBack = { navController.popBackStack() },
                         )
                     }
 

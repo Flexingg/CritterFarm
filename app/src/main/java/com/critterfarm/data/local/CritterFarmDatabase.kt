@@ -14,8 +14,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         FarmInventoryEntity::class,
         DailySummaryLogEntity::class,
         QuestClaimEntity::class,
+        DecorPlacementEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 @TypeConverters(CritterMoodConverters::class)
@@ -24,6 +25,7 @@ abstract class CritterFarmDatabase : RoomDatabase() {
     abstract fun farmInventoryDao(): FarmInventoryDao
     abstract fun dailySummaryLogDao(): DailySummaryLogDao
     abstract fun questClaimDao(): QuestClaimDao
+    abstract fun decorPlacementDao(): DecorPlacementDao
 
     companion object {
         @Volatile
@@ -83,6 +85,26 @@ abstract class CritterFarmDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v5 adds decorations: one row per occupied square of the 6x4 farm scene, keyed by cell so
+         * a square physically cannot hold two things. Purely additive — hats, coins, the barn and
+         * every logged day are untouched, and a player's farm survives with nothing placed.
+         */
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS decor_placements (
+                        cellIndex INTEGER NOT NULL,
+                        decorId TEXT NOT NULL,
+                        placedAt INTEGER NOT NULL,
+                        PRIMARY KEY(cellIndex)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
         fun getInstance(context: Context): CritterFarmDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -90,7 +112,7 @@ abstract class CritterFarmDatabase : RoomDatabase() {
                     CritterFarmDatabase::class.java,
                     "critterfarm.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { instance = it }
             }

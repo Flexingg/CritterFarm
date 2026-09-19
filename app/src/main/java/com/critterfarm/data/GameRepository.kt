@@ -5,6 +5,8 @@ import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.CritterMood
 import com.critterfarm.data.local.DailySummaryLogDao
 import com.critterfarm.data.local.DailySummaryLogEntity
+import com.critterfarm.data.local.DecorPlacementDao
+import com.critterfarm.data.local.DecorPlacementEntity
 import com.critterfarm.data.local.FarmInventoryDao
 import com.critterfarm.data.local.FarmInventoryEntity
 import com.critterfarm.data.local.QuestClaimDao
@@ -107,12 +109,16 @@ class GameRepository(
     private val inventoryDao: FarmInventoryDao,
     private val dailySummaryLogDao: DailySummaryLogDao,
     private val questClaimDao: QuestClaimDao,
+    private val decorPlacementDao: DecorPlacementDao,
 ) {
     /** The active critter — the one shown on the farm. Exactly one row is ever active. */
     val critter: Flow<CritterEntity?> = critterDao.observeActive()
     val inventory: Flow<FarmInventoryEntity?> =
         inventoryDao.observeInventory(FarmInventoryEntity.SINGLETON_ID)
     val dailyLogs: Flow<List<DailySummaryLogEntity>> = dailySummaryLogDao.observeAll()
+
+    /** Where every decoration currently stands, keyed by cell. */
+    val decorPlacements: Flow<List<DecorPlacementEntity>> = decorPlacementDao.observeAll()
 
     fun observeQuestClaims(date: LocalDate): Flow<List<QuestClaimEntity>> =
         questClaimDao.observeForDate(date.toString())
@@ -476,6 +482,40 @@ class GameRepository(
         if (trimmed.isBlank()) return false
         val critter = critterDao.getById(id) ?: return false
         critterDao.update(critter.copy(name = trimmed))
+        return true
+    }
+
+    /**
+     * Places a decoration: **buying is placing.** The price is charged per copy, coins come out of
+     * the same purse the hats use, and the cell is claimed in the same transaction so a failure
+     * cannot leave the player charged for something that is not on their farm.
+     */
+    suspend fun placeDecor(itemId: String, cellIndex: Int): PlaceResult {
+        val inventory = inventoryDao.getInventory(FarmInventoryEntity.SINGLETON_ID)
+            ?: return PlaceResult.UnknownItem
+        val occupied = decorPlacementDao.getAll().associate { it.cellIndex to it.decorId }
+        val checked = PlacementRules.validate(itemId, cellIndex, inventory.coins, occupied)
+        if (checked !is PlaceResult.Placed) return checked
+
+        inventoryDao.upsert(inventory.copy(coins = checked.coinsLeft))
+        decorPlacementDao.upsert(
+            DecorPlacementEntity(
+                cellIndex = cellIndex,
+                decorId = itemId,
+                placedAt = System.currentTimeMillis(),
+            ),
+        )
+        return checked
+    }
+
+    /**
+     * Clears a square. No refund — the shop copy says so — because a half-priced farm rearranging
+     * itself would make the coin cost meaningless, and the scene is meant to be a permanent marker
+     * of the walking you actually did.
+     */
+    suspend fun removeDecor(cellIndex: Int): Boolean {
+        if (!PlacementRules.isInRange(cellIndex)) return false
+        decorPlacementDao.removeAt(cellIndex)
         return true
     }
 
