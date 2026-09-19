@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -232,6 +233,7 @@ private fun rowStatus(
 fun TodayStatsCard(
     log: DailySummaryLogEntity?,
     dormantZones: Set<GameZone>,
+    onRowClick: (GameZone) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val targets = buildStatTargets(log, dormantZones)
@@ -243,18 +245,20 @@ fun TodayStatsCard(
             Column {
                 Text("Today on the farm", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Today's number against its target, for every zone.",
+                    "Today's number against its target, for every zone. Tap a row for its history.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            targets.forEach { target -> StatRow(target) }
+            targets.forEach { target ->
+                StatRow(target = target, onClick = { onRowClick(target.zone) })
+            }
         }
     }
 }
 
 @Composable
-private fun StatRow(target: StatTarget) {
+private fun StatRow(target: StatTarget, onClick: () -> Unit) {
     val barColor = when {
         !target.linked -> DormantGray
         target.met -> SproutGreen
@@ -272,6 +276,9 @@ private fun StatRow(target: StatTarget) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 2.dp)
             .semantics(mergeDescendants = true) { contentDescription = target.spokenText },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

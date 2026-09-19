@@ -54,16 +54,50 @@ answers the same three questions:
 
 ## Screenshots
 
-Captured from the `critterfarm_api35` emulator (Android 15) running the **v1.0** layout — the
-stats were restructured into the card above in v1.1, so treat these as the onboarding and
-navigation shots rather than the current stats layout:
+Captured from the `critterfarm_api35` emulator (Android 15) running **v1.2**. The local database
+was seeded with demo days so the heatmap and shop have something to show — the emulator has no
+Health Connect data, so these are not real user stats:
 
-| Onboarding | The farm | Health not linked yet |
+| Sprout wearing a bought hat | The Barn Shop | Claim + streak payout | History heatmap |
+|---|---|---|---|
+| ![hat](docs/screenshots/04-v12-farm-hat.png) | ![shop](docs/screenshots/05-v12-shop.png) | ![claim](docs/screenshots/07-v12-celebration.png) | ![history](docs/screenshots/06-v12-history.png) |
+
+Earlier layout shots (v1.0 onboarding/navigation) are `01`–`03` in the same folder.
+
+## What the currencies are for
+
+v1.1 earned coins, treats and Mana Sparks with nothing to spend them on. v1.2 closes that loop —
+each currency now has exactly one job:
+
+| Currency | Earned from | Spent on |
 |---|---|---|
-| ![onboarding](docs/screenshots/01-onboarding.png) | ![farm](docs/screenshots/02-farm.png) | ![claim](docs/screenshots/03-claim-snackbar.png) |
+| 🪙 **Coins** (100 steps = 1) | steps | hats (150–2,000) and **Streak Freezes** (250) |
+| 🍬 **Treats** (5 per workout) | workouts | **feeding Sprout** — hunger ↓, happiness ↑ |
+| 🔮 **Mana Sparks** (scarce) | a safe calorie deficit | the prestige **Deficit Halo** |
 
-The third shot is the "Claim Daily Turn" chest answering with a snackbar instead of loot, because
-no health data is linked yet — the zero-permission path.
+Every hat is drawn with the same Canvas as the critter, so Sprout actually wears what you buy.
+
+**Three rules keep it honest**, and there is a unit test for the third:
+1. Consistency gates capability; currency only buys decoration. You cannot purchase a level or
+   an evolution.
+2. Nothing buys a health shortcut — no "skip today's workout", no buying a deficit.
+3. `GameEconomyTest` fails the build if anyone adds a purchasable item that is not a cosmetic or
+   streak insurance.
+
+**The streak is what compounds:** day 3 pays ×1.5, day 7 ×2, day 30 ×3 on every reward, shown
+in the celebration modal. Miss a day and a Streak Freeze (if you own one) keeps the chain alive.
+
+## History
+
+Tap any stat row for that metric's history — a 14-day bar chart, best-ever with its date, the
+average and how many days are recorded. The **Farm history** screen adds a GitHub-style
+consistency heatmap (five shades for how many of the six daily targets you hit) and records:
+most steps in a day, most water, longest sleep, most workouts, longest goal streak, best 6/6
+day, and lowest weigh-in — framed as a milestone (*"slow and steady wins"*), never a race.
+
+All of it is computed from the daily logs the app already stored, so it needs **no new Health
+Connect permissions** and works offline.
+
 
 ## Architecture
 
@@ -112,8 +146,8 @@ A signed release APK is published — no toolchain, no Android Studio:
 
 | Where | What |
 |---|---|
-| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.1-release.apk` (recommended) |
-| **In this repo** | [`dist/CritterFarm-1.1-release.apk`](dist/CritterFarm-1.1-release.apk) |
+| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.2-release.apk` (recommended) |
+| **In this repo** | [`dist/CritterFarm-1.2-release.apk`](dist/CritterFarm-1.2-release.apk) |
 
 Install: allow "install unknown apps" for your browser/file manager → open the APK → launch
 **CritterFarm**. Health Connect ships with Android 14+; on older devices grab it from the Play
@@ -122,7 +156,7 @@ sleepy "Dormant Zones".
 
 ```bash
 # confirm you got the same bytes we built
-sha256sum CritterFarm-1.1-release.apk     # compare to dist/CritterFarm-1.1-release.apk.sha256
+sha256sum CritterFarm-1.2-release.apk     # compare to dist/CritterFarm-1.2-release.apk.sha256
 ```
 
 The release APK is signed with a **4096-bit RSA** key (`CN=CritterFarm`, APK Signature Scheme

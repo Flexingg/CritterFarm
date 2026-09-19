@@ -8,13 +8,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.critterfarm.data.ClaimResult
+import com.critterfarm.ui.theme.CoinGold
 
 /**
  * The dopamine moment: today's spoils tallying up with an arcade count-up, shown after
@@ -48,6 +51,11 @@ fun CelebrationModal(result: ClaimResult.Claimed, onDismiss: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                 )
+                StreakBanner(
+                    streakDays = result.streakDays,
+                    multiplier = result.multiplier,
+                    freezeUsed = result.freezeUsed,
+                )
                 SpoilRow(emoji = "✨", label = "XP", target = result.xpEarned)
                 SpoilRow(emoji = "🪙", label = "Coins", target = result.coinsEarned)
                 SpoilRow(emoji = "🍬", label = "Treats", target = result.treatsEarned)
@@ -64,6 +72,53 @@ fun CelebrationModal(result: ClaimResult.Claimed, onDismiss: () -> Unit) {
         },
     )
 }
+
+/**
+ * The chain, front and centre. The streak is what compounds, so the modal says out loud what
+ * it just paid — a 7-day run turning ×2 on every single reward.
+ */
+@Composable
+private fun StreakBanner(streakDays: Int, multiplier: Double, freezeUsed: Boolean) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = CoinGold.copy(alpha = 0.22f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = if (streakDays > 1) "🔥 $streakDays-day streak" else "🔥 Streak started",
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+            )
+            if (multiplier > 1.0) {
+                Text(
+                    text = "Everything above already paid ×${trimTrailingZero(multiplier)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                Text(
+                    text = "Reach 3 days and every claim pays ×1.5",
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            if (freezeUsed) {
+                Text(
+                    text = "🧊 A Streak Freeze kept the chain alive",
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+private fun trimTrailingZero(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
 
 @Composable
 private fun SpoilRow(emoji: String, label: String, target: Int) {

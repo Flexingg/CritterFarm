@@ -20,6 +20,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
@@ -31,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.critterfarm.data.GameRules
@@ -40,13 +42,17 @@ import com.critterfarm.data.local.FarmInventoryEntity
 import com.critterfarm.health.HealthConnectAvailability
 import com.critterfarm.ui.model.GameZone
 import com.critterfarm.ui.theme.CoinGold
+import com.critterfarm.ui.theme.EmberOrange
 import com.critterfarm.ui.theme.PastureGreenLight
+import com.critterfarm.ui.theme.SlumberLavender
 
 @Composable
 fun FarmScreen(
     uiState: FarmUiState,
     onIntent: (FarmIntent) -> Unit,
     onOpenOnboarding: () -> Unit,
+    onOpenShop: () -> Unit,
+    onOpenHistory: (GameZone?) -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -80,8 +86,14 @@ fun FarmScreen(
                 healthAvailability = uiState.healthAvailability,
                 hasAnyHealthConnection = uiState.hasAnyHealthConnection,
                 dormantZones = uiState.dormantZones,
+                streakDays = uiState.streakDays,
+                streakMultiplier = uiState.streakMultiplier,
+                streakFreezes = uiState.streakFreezes,
                 onClaim = { onIntent(FarmIntent.ClaimDailyTurn) },
+                onFeed = { onIntent(FarmIntent.FeedCritter) },
                 onOpenOnboarding = onOpenOnboarding,
+                onOpenShop = onOpenShop,
+                onOpenHistory = onOpenHistory,
             )
         }
     }
@@ -132,8 +144,14 @@ private fun FarmContent(
     healthAvailability: HealthConnectAvailability,
     hasAnyHealthConnection: Boolean,
     dormantZones: List<GameZone>,
+    streakDays: Int,
+    streakMultiplier: Double,
+    streakFreezes: Int,
     onClaim: () -> Unit,
+    onFeed: () -> Unit,
     onOpenOnboarding: () -> Unit,
+    onOpenShop: () -> Unit,
+    onOpenHistory: (GameZone?) -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(
@@ -143,11 +161,44 @@ private fun FarmContent(
         ) {
             item { HeaderRow(critter = critter, inventory = inventory, isSyncing = isSyncing) }
 
-            item { CritterStage(critter = critter) }
+            item {
+                StreakCard(
+                    streakDays = streakDays,
+                    multiplier = streakMultiplier,
+                    freezes = streakFreezes,
+                    onBuyFreeze = onOpenShop,
+                )
+            }
 
-            // Targets first: the numbers are the point, the nudge to connect sits below them so
-            // an unlinked farm still reads as "here is where you need to be".
-            item { TodayStatsCard(log = todayLog, dormantZones = dormantZones.toSet()) }
+            item {
+                CritterStage(
+                    critter = critter,
+                    hatId = inventory?.equippedHatId,
+                    treats = inventory?.treats ?: 0,
+                    onFeed = onFeed,
+                    onOpenShop = onOpenShop,
+                )
+            }
+
+            // Targets first: the numbers are the point. Tapping a row opens that metric's history.
+            item {
+                TodayStatsCard(
+                    log = todayLog,
+                    dormantZones = dormantZones.toSet(),
+                    onRowClick = { zone -> onOpenHistory(zone) },
+                )
+            }
+
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onOpenShop, modifier = Modifier.weight(1f)) {
+                        Text("🛍  Barn Shop")
+                    }
+                    OutlinedButton(onClick = { onOpenHistory(null) }, modifier = Modifier.weight(1f)) {
+                        Text("📊  History")
+                    }
+                }
+            }
 
             if (healthAvailability !is HealthConnectAvailability.Available || !hasAnyHealthConnection) {
                 item { ConnectHealthBanner(healthAvailability, onOpenOnboarding) }
@@ -210,14 +261,93 @@ private fun CurrencyPill(emoji: String, value: Int) {
     }
 }
 
+/** The chain, made obvious: what it is, what it pays, and the insurance you hold. */
 @Composable
-private fun CritterStage(critter: CritterEntity) {
+private fun StreakCard(
+    streakDays: Int,
+    multiplier: Double,
+    freezes: Int,
+    onBuyFreeze: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (streakDays > 0) "🔥" else "🕯", style = MaterialTheme.typography.headlineSmall)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (streakDays > 0) "$streakDays-day streak" else "No streak yet",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    when {
+                        streakDays == 0 -> "Claim today's chest to start the chain."
+                        multiplier > 1.0 -> "Every claim pays ×${trimmed(multiplier)} right now."
+                        else -> "Reach 3 days and every claim pays ×1.5."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    if (freezes > 0) {
+                        "🧊 $freezes freeze${if (freezes == 1) "" else "s"} ready"
+                    } else {
+                        "No streak freeze — buy one to protect the chain."
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (freezes > 0) SlumberLavender else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (freezes == 0) {
+                OutlinedButton(onClick = onBuyFreeze) { Text("🛍") }
+            }
+        }
+    }
+}
+
+private fun trimmed(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
+
+@Composable
+private fun CritterStage(
+    critter: CritterEntity,
+    hatId: String?,
+    treats: Int,
+    onFeed: () -> Unit,
+    onOpenShop: () -> Unit,
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = PastureGreenLight),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-            CritterCanvas(mood = critter.mood)
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CritterCanvas(mood = critter.mood, hatId = hatId)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Hunger ${critter.hunger} · Happiness ${critter.happiness}",
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = onFeed, enabled = treats > 0) {
+                    Text(if (treats > 0) "🍬 Feed Sprout ($treats)" else "🍬 No treats yet")
+                }
+                OutlinedButton(onClick = onOpenShop) { Text("Hats") }
+            }
+            if (treats == 0) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "One workout earns 5 treats for Sprout.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -236,7 +366,11 @@ private fun ConnectHealthBanner(availability: HealthConnectAvailability, onOpenO
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Zzz... the farm is quiet", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Zzz... the farm is quiet", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("💤", color = EmberOrange)
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Text(message, style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(12.dp))

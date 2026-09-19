@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.critterfarm.data.ClaimResult
+import com.critterfarm.data.FeedResult
 import com.critterfarm.data.GameRepository
+import com.critterfarm.data.GameRules
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.DailySummaryLogEntity
 import com.critterfarm.data.local.FarmInventoryEntity
@@ -34,6 +36,9 @@ sealed class FarmIntent {
 
     /** Snackbar message was dismissed or timed out. */
     data object DismissMessage : FarmIntent()
+
+    /** Spend one treat on the critter — the daily ritual that gives treats a purpose. */
+    data object FeedCritter : FarmIntent()
 }
 
 data class FarmUiState(
@@ -53,6 +58,12 @@ data class FarmUiState(
 
     val hasAnyHealthConnection: Boolean
         get() = grantedPermissions.isNotEmpty()
+
+    /** The chain: consecutive claimed days, what it pays, and the insurance you hold. */
+    val streakDays: Int get() = inventory?.claimStreak ?: 0
+    val bestStreak: Int get() = inventory?.bestStreak ?: 0
+    val streakFreezes: Int get() = inventory?.streakFreezes ?: 0
+    val streakMultiplier: Double get() = GameRules.claimMultiplier(streakDays)
 }
 
 /**
@@ -78,6 +89,7 @@ class FarmViewModel(
             FarmIntent.ClaimDailyTurn -> claimDailyTurn()
             FarmIntent.DismissCelebration -> _uiState.update { it.copy(celebration = null) }
             FarmIntent.DismissMessage -> _uiState.update { it.copy(snackbarMessage = null) }
+            FarmIntent.FeedCritter -> feedCritter()
         }
     }
 
@@ -180,6 +192,29 @@ class FarmViewModel(
                         isClaiming = false,
                         snackbarMessage = "No activity synced yet today — take a step or sip " +
                             "some water, then try again!",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Spend a treat on Sprout. This closes the loop that v1.1 left open: train → earn treats →
+     * care for the critter. Before this, treats were a counter that only ever went up.
+     */
+    private fun feedCritter() {
+        viewModelScope.launch {
+            when (val result = gameRepository.feedCritter()) {
+                is FeedResult.Fed -> _uiState.update {
+                    it.copy(
+                        snackbarMessage = "Sprout munched a treat! Hunger ${result.hunger}, " +
+                            "happiness ${result.happiness} — ${result.treatsLeft} treats left.",
+                    )
+                }
+                FeedResult.NoTreats -> _uiState.update {
+                    it.copy(
+                        snackbarMessage = "The treat jar is empty — one workout earns 5 treats " +
+                            "for Sprout.",
                     )
                 }
             }
