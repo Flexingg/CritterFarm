@@ -31,6 +31,17 @@ permissions are granted (or Health Connect isn't installed at all), the ungrante
 up as sleepy "Dormant Zones" with warm, specific copy — never an error screen. The app is
 fully playable with zero permissions granted.
 
+## Screenshots
+
+Captured from the `critterfarm_api35` emulator (Android 15) running the signed release APK:
+
+| Onboarding | The farm | Health not linked yet |
+|---|---|---|
+| ![onboarding](docs/screenshots/01-onboarding.png) | ![farm](docs/screenshots/02-farm.png) | ![claim](docs/screenshots/03-claim-snackbar.png) |
+
+The third shot is the "Claim Daily Turn" chest answering with a snackbar instead of loot, because
+no health data is linked yet — the zero-permission path.
+
 ## Architecture
 
 Clean Architecture-ish, MVI on the UI layer:
@@ -95,6 +106,12 @@ The release APK is signed with a **4096-bit RSA** key (`CN=CritterFarm`, APK Sig
 v2): sideload-ready, not Play-Store-submitted. The keystore lives *outside* this repo
 (`~/.keystores/critterfarm-release.jks`, pointed at by a gitignored `keystore.properties`), so
 a build made without it falls back to debug signing and will **not** install over this one.
+
+## Emulator
+
+An AVD (`critterfarm_api35`, Android 15 / API 35, KVM-accelerated) is configured on this machine
+for running and verifying the app without a phone — including headless screenshots from the
+command line. Full commands and gotchas: [`docs/emulator.md`](docs/emulator.md).
 
 ## Building
 
