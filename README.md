@@ -31,9 +31,32 @@ permissions are granted (or Health Connect isn't installed at all), the ungrante
 up as sleepy "Dormant Zones" with warm, specific copy — never an error screen. The app is
 fully playable with zero permissions granted.
 
+## Stats at a glance
+
+Every zone's number sits in one **"Today on the farm"** card, in a fixed order, and every row
+answers the same three questions:
+
+```
+🐾 Pasture Roam                        3,588 steps to go
+6,412  / 10,000 steps
+▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░
+```
+
+- **Big current value**, then `/ target`, then a status string (`3,588 steps to go`,
+  `Goal met!`, `Link health to track`).
+- A **dormant zone still shows its target** — an unlinked farm tells you where you need to be
+  instead of hiding the number.
+- Units are the ones you actually read: **steps**, **kcal**, **fl oz**, **sessions**, **h m**
+  (sleep), **lb** (weight). Health Connect's ml/kg values are converted in one place
+  (`StatsFormat.kt`) so they can be unit-tested.
+- Bar colour carries the state as well as the text: gold/green at goal, the zone's accent while
+  in progress, grey when unlinked. No colour-only signals.
+
 ## Screenshots
 
-Captured from the `critterfarm_api35` emulator (Android 15) running the signed release APK:
+Captured from the `critterfarm_api35` emulator (Android 15) running the **v1.0** layout — the
+stats were restructured into the card above in v1.1, so treat these as the onboarding and
+navigation shots rather than the current stats layout:
 
 | Onboarding | The farm | Health not linked yet |
 |---|---|---|
@@ -89,8 +112,8 @@ A signed release APK is published — no toolchain, no Android Studio:
 
 | Where | What |
 |---|---|
-| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.0-release.apk` (recommended) |
-| **In this repo** | [`dist/CritterFarm-1.0-release.apk`](dist/CritterFarm-1.0-release.apk) |
+| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.1-release.apk` (recommended) |
+| **In this repo** | [`dist/CritterFarm-1.1-release.apk`](dist/CritterFarm-1.1-release.apk) |
 
 Install: allow "install unknown apps" for your browser/file manager → open the APK → launch
 **CritterFarm**. Health Connect ships with Android 14+; on older devices grab it from the Play
@@ -99,7 +122,7 @@ sleepy "Dormant Zones".
 
 ```bash
 # confirm you got the same bytes we built
-sha256sum CritterFarm-1.0-release.apk     # compare to dist/CritterFarm-1.0-release.apk.sha256
+sha256sum CritterFarm-1.1-release.apk     # compare to dist/CritterFarm-1.1-release.apk.sha256
 ```
 
 The release APK is signed with a **4096-bit RSA** key (`CN=CritterFarm`, APK Signature Scheme

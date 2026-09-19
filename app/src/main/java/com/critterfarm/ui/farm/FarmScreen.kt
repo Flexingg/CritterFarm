@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -41,7 +40,6 @@ import com.critterfarm.data.local.FarmInventoryEntity
 import com.critterfarm.health.HealthConnectAvailability
 import com.critterfarm.ui.model.GameZone
 import com.critterfarm.ui.theme.CoinGold
-import com.critterfarm.ui.theme.DormantGraySurface
 import com.critterfarm.ui.theme.PastureGreenLight
 
 @Composable
@@ -147,19 +145,12 @@ private fun FarmContent(
 
             item { CritterStage(critter = critter) }
 
+            // Targets first: the numbers are the point, the nudge to connect sits below them so
+            // an unlinked farm still reads as "here is where you need to be".
+            item { TodayStatsCard(log = todayLog, dormantZones = dormantZones.toSet()) }
+
             if (healthAvailability !is HealthConnectAvailability.Available || !hasAnyHealthConnection) {
                 item { ConnectHealthBanner(healthAvailability, onOpenOnboarding) }
-            }
-
-            item {
-                StatPodsRow(
-                    todayLog = todayLog,
-                    dormantZones = dormantZones,
-                )
-            }
-
-            items(supplementaryZones(dormantZones, todayLog)) { rowData ->
-                SupplementaryZoneCard(rowData)
             }
         }
 
@@ -241,7 +232,7 @@ private fun ConnectHealthBanner(availability: HealthConnectAvailability, onOpenO
         HealthConnectAvailability.Unavailable ->
             "This device can't run Health Connect, but Sprout is still happy to hang out."
         HealthConnectAvailability.Available ->
-            "No health data linked yet — every zone below is a Dormant Zone until you connect."
+            "Nothing linked yet — the targets above are waiting for real data."
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -250,94 +241,6 @@ private fun ConnectHealthBanner(availability: HealthConnectAvailability, onOpenO
             Text(message, style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(12.dp))
             Button(onClick = onOpenOnboarding) { Text("Connect My Health") }
-        }
-    }
-}
-
-@Composable
-private fun StatPodsRow(todayLog: DailySummaryLogEntity?, dormantZones: List<GameZone>) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        StatPodOrDormant(zone = GameZone.PASTURE_ROAM, dormantZones = dormantZones) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                StepProgressRing(steps = todayLog?.steps ?: 0L)
-                Text("Pasture Roam", style = MaterialTheme.typography.labelSmall)
-            }
-        }
-        StatPodOrDormant(zone = GameZone.GROWTH_SPARK, dormantZones = dormantZones) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CalorieFlame(deficitKcal = todayLog?.deficit?.coerceAtLeast(0.0) ?: 0.0)
-                Text("Growth Spark", style = MaterialTheme.typography.labelSmall)
-            }
-        }
-        StatPodOrDormant(zone = GameZone.FRESH_POND, dormantZones = dormantZones) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                PondWaterBar(hydrationMl = todayLog?.hydrationMl ?: 0.0)
-                Text("Fresh Pond", style = MaterialTheme.typography.labelSmall)
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatPodOrDormant(zone: GameZone, dormantZones: List<GameZone>, content: @Composable () -> Unit) {
-    if (dormantZones.contains(zone)) {
-        DormantPod(zone)
-    } else {
-        content()
-    }
-}
-
-@Composable
-private fun DormantPod(zone: GameZone) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = DormantGraySurface,
-            modifier = Modifier.size(96.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(zone.emoji, style = MaterialTheme.typography.headlineMedium)
-            }
-        }
-        Text(zone.displayName, style = MaterialTheme.typography.labelSmall)
-    }
-}
-
-private data class SupplementaryZoneRow(val zone: GameZone, val valueText: String)
-
-private fun supplementaryZones(
-    dormantZones: List<GameZone>,
-    todayLog: DailySummaryLogEntity?,
-): List<SupplementaryZoneRow> = listOf(
-    SupplementaryZoneRow(GameZone.GYM_BARN, "${todayLog?.workouts ?: 0} workouts logged today"),
-    SupplementaryZoneRow(
-        GameZone.COZY_BARN,
-        "${(todayLog?.sleepMinutes ?: 0) / 60}h ${(todayLog?.sleepMinutes ?: 0) % 60}m of sleep last night",
-    ),
-    SupplementaryZoneRow(
-        GameZone.EVOLUTION_SCALE,
-        todayLog?.weightKg?.let { "Latest weigh-in: %.1f kg".format(it) } ?: "No weigh-in yet",
-    ),
-).map { row ->
-    if (dormantZones.contains(row.zone)) row.copy(valueText = row.zone.dormantMessage) else row
-}
-
-@Composable
-private fun SupplementaryZoneCard(row: SupplementaryZoneRow) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(row.zone.emoji, style = MaterialTheme.typography.headlineSmall)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(row.zone.displayName, style = MaterialTheme.typography.titleMedium)
-                Text(row.valueText, style = MaterialTheme.typography.bodyMedium)
-            }
         }
     }
 }
