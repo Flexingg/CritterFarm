@@ -54,8 +54,8 @@ answers the same three questions:
 
 ## Screenshots
 
-Captured from the `critterfarm_api35` emulator (Android 15) running **v1.3**. The local database
-was seeded with demo days so the heatmap, shop and barn have something to show — the emulator has
+Captured from the `critterfarm_api35` emulator (Android 15) running **v1.4**. The local database
+was seeded with demo days so the heatmap, shop, barn, quests and badges have something to show — the emulator has
 no Health Connect data, so these are not real user stats:
 
 | Sprout wearing a bought hat | The Barn Shop | Claim + streak payout | History heatmap |
@@ -67,6 +67,12 @@ no Health Connect data, so these are not real user stats:
 | The Barn (two species) | Evolution requirements met | The evolution | Evolved on the farm |
 |---|---|---|---|
 | ![barn](docs/screenshots/08-v13-barn.png) | ![ready](docs/screenshots/09-v13-evolve-ready.png) | ![evolved](docs/screenshots/10-v13-evolution.png) | ![stage1](docs/screenshots/11-v13-farm-stage1.png) |
+
+**v1.4 — quests, streaks and badges:**
+
+| Today's quests | Badges (16 / 19) | Per-zone streak chips |
+|---|---|---|
+| ![quests](docs/screenshots/12-v14-quests.png) | ![badges](docs/screenshots/13-v14-badges.png) | ![streaks](docs/screenshots/14-v14-streak-chips.png) |
 
 Earlier layout shots (v1.0 onboarding/navigation) are `01`–`03` in the same folder.
 
@@ -140,6 +146,32 @@ The barn is additive over v1.2: `MIGRATION_2_3` adds the new columns and marks y
 critter as the active one, so upgrading never loses a pet. The v1.2 → v1.3 upgrade was verified on
 a real seeded database (120 days of logs, coins, streak and equipped hat all preserved).
 
+## Quests, streaks and badges
+
+Three time horizons of motivation, all computed from the daily logs the app already stores:
+
+**Today — daily quests.** Three quests, chosen deterministically from the date (the same day always
+gives the same three, and consecutive days differ — there is a test for both). The pool covers all
+six metrics: step targets from 6k to 15k, water from 64 to 100 fl oz, one to three workouts, 7h and
+8h of sleep, a safe-deficit day, a *"keep it sane"* `AT_MOST` cap, and logging a weigh-in. Progress
+comes straight from today's log (`64%` on the 10,000-step quest is literally `steps / 10,000`), and
+claiming is idempotent per day exactly like the Daily Turn chest.
+
+**This week — per-zone streaks.** Each of the six zones tracks its own current and best streak, shown
+as a `🔥 8-day` chip on the stat row once it reaches 2. A streak that ended yesterday is still
+*current* — it has just not been extended yet. Per-metric independence is tested: a water streak does
+not care about your steps.
+
+**Forever — badges.** 19 badges across Bronze, Silver and Gold, every one with a concrete threshold
+computed from history: first 10k-step day, 5 perfect days, 100k and 250k lifetime steps, 10 and 25
+workouts, 7-day hydration and step streaks, 30-day claim streak, 50 days logged, 20 perfect days,
+and a "Consistency" family that climbs from 15 to 60 good days. Badges are never stored — they are
+derived, so a badge you earned last month cannot be lost — and every locked badge shows its progress
+bar, because the next one should always feel close.
+
+Still honest: quests pay coins and treats, never health. Nothing here can be bought, and no quest
+asks you to eat less.
+
 ## Architecture
 
 Clean Architecture-ish, MVI on the UI layer:
@@ -187,8 +219,8 @@ A signed release APK is published — no toolchain, no Android Studio:
 
 | Where | What |
 |---|---|
-| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.3-release.apk` (recommended) |
-| **In this repo** | [`dist/CritterFarm-1.3-release.apk`](dist/CritterFarm-1.3-release.apk) |
+| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.4-release.apk` (recommended) |
+| **In this repo** | [`dist/CritterFarm-1.4-release.apk`](dist/CritterFarm-1.4-release.apk) |
 
 Install: allow "install unknown apps" for your browser/file manager → open the APK → launch
 **CritterFarm**. Health Connect ships with Android 14+; on older devices grab it from the Play
@@ -197,7 +229,7 @@ sleepy "Dormant Zones".
 
 ```bash
 # confirm you got the same bytes we built
-sha256sum CritterFarm-1.3-release.apk     # compare to dist/CritterFarm-1.3-release.apk.sha256
+sha256sum CritterFarm-1.4-release.apk     # compare to dist/CritterFarm-1.4-release.apk.sha256
 ```
 
 The release APK is signed with a **4096-bit RSA** key (`CN=CritterFarm`, APK Signature Scheme

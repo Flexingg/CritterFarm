@@ -7,12 +7,18 @@ import com.critterfarm.data.ClaimResult
 import com.critterfarm.data.FeedResult
 import com.critterfarm.data.GameRepository
 import com.critterfarm.data.GameRules
+import com.critterfarm.data.Quest
+import com.critterfarm.data.QuestCatalog
+import com.critterfarm.data.QuestClaimResult
+import com.critterfarm.data.QuestsForDay
+import com.critterfarm.data.StreakRules
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.DailySummaryLogEntity
 import com.critterfarm.data.local.FarmInventoryEntity
 import com.critterfarm.health.HealthConnectAvailability
 import com.critterfarm.health.HealthConnectManager
 import com.critterfarm.ui.model.GameZone
+import com.critterfarm.ui.toMetric
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +45,9 @@ sealed class FarmIntent {
 
     /** Spend one treat on the critter — the daily ritual that gives treats a purpose. */
     data object FeedCritter : FarmIntent()
+
+    /** Tap Claim on a completed-unclaimed quest. */
+    data class ClaimQuest(val questId: String) : FarmIntent()
 }
 
 data class FarmUiState(
@@ -52,6 +61,10 @@ data class FarmUiState(
     val grantedPermissions: Set<String> = emptySet(),
     val celebration: ClaimResult.Claimed? = null,
     val snackbarMessage: String? = null,
+    /** Today's three quests, seeded by the date — the same day always shows the same three. */
+    val todayQuests: List<Quest> = QuestsForDay.forDate(LocalDate.now(), QuestCatalog.ALL),
+    val claimedQuestIds: Set<String> = emptySet(),
+    val zoneStreaks: Map<GameZone, Int> = emptyMap(),
 ) {
     val dormantZones: List<GameZone>
         get() = GameZone.entries.filter { it.isDormant(grantedPermissions) }
@@ -90,24 +103,46 @@ class FarmViewModel(
             FarmIntent.DismissCelebration -> _uiState.update { it.copy(celebration = null) }
             FarmIntent.DismissMessage -> _uiState.update { it.copy(snackbarMessage = null) }
             FarmIntent.FeedCritter -> feedCritter()
+            is FarmIntent.ClaimQuest -> claimQuest(intent.questId)
         }
     }
 
+    private data class LocalState(
+        val critter: CritterEntity?,
+        val inventory: FarmInventoryEntity?,
+        val todayLog: DailySummaryLogEntity?,
+        val claimedQuestIds: Set<String>,
+        val zoneStreaks: Map<GameZone, Int>,
+    )
+
     private fun observeLocalState() {
         viewModelScope.launch {
+            val today = LocalDate.now()
             combine(
                 gameRepository.critter,
                 gameRepository.inventory,
-                gameRepository.observeDailyLog(LocalDate.now()),
-            ) { critter, inventory, todayLog ->
-                Triple(critter, inventory, todayLog)
-            }.collect { (critter, inventory, todayLog) ->
+                gameRepository.observeDailyLog(today),
+                gameRepository.observeQuestClaims(today),
+                gameRepository.dailyLogs,
+            ) { critter, inventory, todayLog, claims, allLogs ->
+                LocalState(
+                    critter = critter,
+                    inventory = inventory,
+                    todayLog = todayLog,
+                    claimedQuestIds = claims.map { it.questId }.toSet(),
+                    zoneStreaks = GameZone.entries.associateWith { zone ->
+                        StreakRules.currentStreak(allLogs, zone.toMetric(), today)
+                    },
+                )
+            }.collect { state ->
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        critter = critter,
-                        inventory = inventory,
-                        todayLog = todayLog,
+                        critter = state.critter,
+                        inventory = state.inventory,
+                        todayLog = state.todayLog,
+                        claimedQuestIds = state.claimedQuestIds,
+                        zoneStreaks = state.zoneStreaks,
                     )
                 }
             }
@@ -219,6 +254,35 @@ class FarmViewModel(
                 }
             }
         }
+    }
+
+    private fun claimQuest(questId: String) {
+        viewModelScope.launch {
+            when (val result = gameRepository.claimQuest(LocalDate.now(), questId)) {
+                is QuestClaimResult.Claimed -> _uiState.update {
+                    it.copy(
+                        snackbarMessage = "Quest complete! ${result.quest.text} — " +
+                            rewardCopy(result.coinsEarned, result.treatsEarned),
+                    )
+                }
+                QuestClaimResult.AlreadyClaimed -> _uiState.update {
+                    it.copy(snackbarMessage = "Already claimed — that one's done for today.")
+                }
+                QuestClaimResult.NotComplete -> _uiState.update {
+                    it.copy(snackbarMessage = "Not quite there yet — keep going!")
+                }
+                QuestClaimResult.UnknownQuest, QuestClaimResult.NoInventory -> _uiState.update {
+                    it.copy(snackbarMessage = "Couldn't claim that one — try again in a moment.")
+                }
+            }
+        }
+    }
+
+    private fun rewardCopy(coins: Int, treats: Int): String = when {
+        coins > 0 && treats > 0 -> "+$coins 🪙 +$treats 🍬"
+        coins > 0 -> "+$coins 🪙"
+        treats > 0 -> "+$treats 🍬"
+        else -> "nice work!"
     }
 }
 

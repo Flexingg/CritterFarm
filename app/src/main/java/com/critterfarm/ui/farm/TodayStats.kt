@@ -55,6 +55,7 @@ data class StatTarget(
     val linked: Boolean,
     val met: Boolean,
     val accent: Color,
+    val streakDays: Int = 0,
 ) {
     /** Screen-reader sentence for the whole row. */
     val spokenText: String
@@ -71,6 +72,7 @@ data class StatTarget(
 fun buildStatTargets(
     log: DailySummaryLogEntity?,
     dormantZones: Set<GameZone>,
+    zoneStreaks: Map<GameZone, Int> = emptyMap(),
 ): List<StatTarget> {
     fun dormant(zone: GameZone) = dormantZones.contains(zone)
 
@@ -213,6 +215,7 @@ fun buildStatTargets(
     )
 
     return listOf(stepsRow, deficitRow, hydrationRow, workoutRow, sleepRow, weightRow)
+        .map { row -> row.copy(streakDays = zoneStreaks[row.zone] ?: 0) }
 }
 
 /** Shared status copy so every row reads the same way. */
@@ -233,10 +236,11 @@ private fun rowStatus(
 fun TodayStatsCard(
     log: DailySummaryLogEntity?,
     dormantZones: Set<GameZone>,
+    zoneStreaks: Map<GameZone, Int> = emptyMap(),
     onRowClick: (GameZone) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val targets = buildStatTargets(log, dormantZones)
+    val targets = buildStatTargets(log, dormantZones, zoneStreaks)
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -289,6 +293,15 @@ private fun StatRow(target: StatTarget, onClick: () -> Unit) {
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (target.streakDays >= 2) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "🔥 ${target.streakDays}-day",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = EmberOrange,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 text = target.statusText,

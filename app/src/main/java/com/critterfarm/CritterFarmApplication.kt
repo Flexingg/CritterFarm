@@ -15,6 +15,7 @@ class CritterFarmApplication : Application() {
             critterDao = database.critterDao(),
             inventoryDao = database.farmInventoryDao(),
             dailySummaryLogDao = database.dailySummaryLogDao(),
+            questClaimDao = database.questClaimDao(),
         )
     }
 

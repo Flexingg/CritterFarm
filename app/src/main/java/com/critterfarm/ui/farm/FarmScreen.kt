@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.critterfarm.data.GameRules
+import com.critterfarm.data.Quest
 import com.critterfarm.data.SpeciesCatalog
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.DailySummaryLogEntity
@@ -55,6 +56,7 @@ fun FarmScreen(
     onOpenShop: () -> Unit,
     onOpenHistory: (GameZone?) -> Unit,
     onOpenBarn: () -> Unit,
+    onOpenBadges: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -91,12 +93,17 @@ fun FarmScreen(
                 streakDays = uiState.streakDays,
                 streakMultiplier = uiState.streakMultiplier,
                 streakFreezes = uiState.streakFreezes,
+                zoneStreaks = uiState.zoneStreaks,
+                todayQuests = uiState.todayQuests,
+                claimedQuestIds = uiState.claimedQuestIds,
                 onClaim = { onIntent(FarmIntent.ClaimDailyTurn) },
                 onFeed = { onIntent(FarmIntent.FeedCritter) },
+                onClaimQuest = { questId -> onIntent(FarmIntent.ClaimQuest(questId)) },
                 onOpenOnboarding = onOpenOnboarding,
                 onOpenShop = onOpenShop,
                 onOpenHistory = onOpenHistory,
                 onOpenBarn = onOpenBarn,
+                onOpenBadges = onOpenBadges,
             )
         }
     }
@@ -150,12 +157,17 @@ private fun FarmContent(
     streakDays: Int,
     streakMultiplier: Double,
     streakFreezes: Int,
+    zoneStreaks: Map<GameZone, Int>,
+    todayQuests: List<Quest>,
+    claimedQuestIds: Set<String>,
     onClaim: () -> Unit,
     onFeed: () -> Unit,
+    onClaimQuest: (String) -> Unit,
     onOpenOnboarding: () -> Unit,
     onOpenShop: () -> Unit,
     onOpenHistory: (GameZone?) -> Unit,
     onOpenBarn: () -> Unit,
+    onOpenBadges: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(
@@ -175,6 +187,13 @@ private fun FarmContent(
             }
 
             item {
+                QuestsCard(
+                    items = buildQuestCardItems(todayQuests, todayLog, claimedQuestIds),
+                    onClaim = onClaimQuest,
+                )
+            }
+
+            item {
                 CritterStage(
                     critter = critter,
                     hatId = inventory?.equippedHatId,
@@ -189,6 +208,7 @@ private fun FarmContent(
                 TodayStatsCard(
                     log = todayLog,
                     dormantZones = dormantZones.toSet(),
+                    zoneStreaks = zoneStreaks,
                     onRowClick = { zone -> onOpenHistory(zone) },
                 )
             }
@@ -204,6 +224,12 @@ private fun FarmContent(
                     OutlinedButton(onClick = { onOpenHistory(null) }, modifier = Modifier.weight(1f)) {
                         Text("📊  History")
                     }
+                }
+            }
+
+            item {
+                OutlinedButton(onClick = onOpenBadges, modifier = Modifier.fillMaxWidth()) {
+                    Text("🎖  Badges")
                 }
             }
 

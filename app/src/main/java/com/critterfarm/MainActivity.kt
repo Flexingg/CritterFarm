@@ -14,6 +14,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.critterfarm.data.Metric
+import com.critterfarm.ui.badges.BadgesScreen
+import com.critterfarm.ui.badges.BadgesViewModel
+import com.critterfarm.ui.badges.BadgesViewModelFactory
 import com.critterfarm.ui.barn.BarnScreen
 import com.critterfarm.ui.barn.BarnViewModel
 import com.critterfarm.ui.barn.BarnViewModelFactory
@@ -23,32 +26,20 @@ import com.critterfarm.ui.farm.FarmViewModelFactory
 import com.critterfarm.ui.history.HistoryScreen
 import com.critterfarm.ui.history.HistoryViewModel
 import com.critterfarm.ui.history.HistoryViewModelFactory
-import com.critterfarm.ui.model.GameZone
 import com.critterfarm.ui.onboarding.OnboardingScreen
 import com.critterfarm.ui.shop.ShopScreen
 import com.critterfarm.ui.shop.ShopViewModel
 import com.critterfarm.ui.shop.ShopViewModelFactory
 import com.critterfarm.ui.theme.CritterFarmTheme
+import com.critterfarm.ui.toMetric
 
 private const val ROUTE_ONBOARDING = "onboarding"
 private const val ROUTE_FARM = "farm"
 private const val ROUTE_SHOP = "shop"
 private const val ROUTE_BARN = "barn"
 private const val ROUTE_HISTORY = "history"
+private const val ROUTE_BADGES = "badges"
 private const val ARG_FOCUS = "focus"
-
-/**
- * A tapped stat row is a UI concept (a zone) but the history maths speaks in metrics, so the
- * mapping lives here rather than leaking either layer into the other.
- */
-private fun GameZone.toMetric(): Metric = when (this) {
-    GameZone.PASTURE_ROAM -> Metric.STEPS
-    GameZone.GROWTH_SPARK -> Metric.DEFICIT
-    GameZone.FRESH_POND -> Metric.HYDRATION
-    GameZone.GYM_BARN -> Metric.WORKOUTS
-    GameZone.COZY_BARN -> Metric.SLEEP
-    GameZone.EVOLUTION_SCALE -> Metric.WEIGHT
-}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,6 +86,18 @@ class MainActivity : ComponentActivity() {
                                 navController.navigate(route)
                             },
                             onOpenBarn = { navController.navigate(ROUTE_BARN) },
+                            onOpenBadges = { navController.navigate(ROUTE_BADGES) },
+                        )
+                    }
+
+                    composable(ROUTE_BADGES) {
+                        val viewModel: BadgesViewModel = viewModel(
+                            factory = BadgesViewModelFactory(app.gameRepository),
+                        )
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        BadgesScreen(
+                            uiState = uiState,
+                            onBack = { navController.popBackStack() },
                         )
                     }
 
@@ -145,6 +148,7 @@ class MainActivity : ComponentActivity() {
                             uiState = uiState,
                             onBack = { navController.popBackStack() },
                             onClearFocus = { viewModel.focusOn(null) },
+                            onOpenBadges = { navController.navigate(ROUTE_BADGES) },
                         )
                     }
                 }

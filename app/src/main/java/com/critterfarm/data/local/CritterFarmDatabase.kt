@@ -9,8 +9,13 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [CritterEntity::class, FarmInventoryEntity::class, DailySummaryLogEntity::class],
-    version = 3,
+    entities = [
+        CritterEntity::class,
+        FarmInventoryEntity::class,
+        DailySummaryLogEntity::class,
+        QuestClaimEntity::class,
+    ],
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(CritterMoodConverters::class)
@@ -18,6 +23,7 @@ abstract class CritterFarmDatabase : RoomDatabase() {
     abstract fun critterDao(): CritterDao
     abstract fun farmInventoryDao(): FarmInventoryDao
     abstract fun dailySummaryLogDao(): DailySummaryLogDao
+    abstract fun questClaimDao(): QuestClaimDao
 
     companion object {
         @Volatile
@@ -57,6 +63,26 @@ abstract class CritterFarmDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v4 adds daily quests: a claims table keyed by (date, questId) so a quest can only ever
+         * be paid out once per day. Purely additive — quests themselves are static data, not
+         * stored — so nothing about the existing farm changes on upgrade.
+         */
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS quest_claims (
+                        date TEXT NOT NULL,
+                        questId TEXT NOT NULL,
+                        claimedAt INTEGER NOT NULL,
+                        PRIMARY KEY(date, questId)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
         fun getInstance(context: Context): CritterFarmDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -64,7 +90,7 @@ abstract class CritterFarmDatabase : RoomDatabase() {
                     CritterFarmDatabase::class.java,
                     "critterfarm.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }

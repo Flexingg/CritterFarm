@@ -50,6 +50,7 @@ fun HistoryScreen(
     uiState: HistoryUiState,
     onBack: () -> Unit,
     onClearFocus: () -> Unit,
+    onOpenBadges: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -63,7 +64,10 @@ fun HistoryScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Farm history", style = MaterialTheme.typography.headlineSmall)
-                TextButton(onClick = onBack) { Text("← Farm") }
+                Row {
+                    TextButton(onClick = onOpenBadges) { Text("🎖 Badges") }
+                    TextButton(onClick = onBack) { Text("← Farm") }
+                }
             }
         }
 

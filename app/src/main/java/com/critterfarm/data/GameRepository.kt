@@ -7,6 +7,8 @@ import com.critterfarm.data.local.DailySummaryLogDao
 import com.critterfarm.data.local.DailySummaryLogEntity
 import com.critterfarm.data.local.FarmInventoryDao
 import com.critterfarm.data.local.FarmInventoryEntity
+import com.critterfarm.data.local.QuestClaimDao
+import com.critterfarm.data.local.QuestClaimEntity
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
 import java.time.LocalDate
@@ -81,6 +83,21 @@ sealed class EvolveResult {
     data class CannotAfford(val shortfall: Int) : EvolveResult()
 }
 
+/** Outcome of tapping Claim on a daily quest. */
+sealed class QuestClaimResult {
+    data class Claimed(val quest: Quest, val coinsEarned: Int, val treatsEarned: Int) : QuestClaimResult()
+
+    /** Idempotent, exactly like the Daily Turn chest — a second tap pays nothing extra. */
+    data object AlreadyClaimed : QuestClaimResult()
+
+    /** The quest's target isn't met yet — nothing to pay out. */
+    data object NotComplete : QuestClaimResult()
+
+    data object UnknownQuest : QuestClaimResult()
+
+    data object NoInventory : QuestClaimResult()
+}
+
 /**
  * The single source of truth for game state. Wraps the Room DAOs and applies [GameRules] so
  * callers (view models) never touch reward math or persistence directly.
@@ -89,12 +106,16 @@ class GameRepository(
     private val critterDao: CritterDao,
     private val inventoryDao: FarmInventoryDao,
     private val dailySummaryLogDao: DailySummaryLogDao,
+    private val questClaimDao: QuestClaimDao,
 ) {
     /** The active critter — the one shown on the farm. Exactly one row is ever active. */
     val critter: Flow<CritterEntity?> = critterDao.observeActive()
     val inventory: Flow<FarmInventoryEntity?> =
         inventoryDao.observeInventory(FarmInventoryEntity.SINGLETON_ID)
     val dailyLogs: Flow<List<DailySummaryLogEntity>> = dailySummaryLogDao.observeAll()
+
+    fun observeQuestClaims(date: LocalDate): Flow<List<QuestClaimEntity>> =
+        questClaimDao.observeForDate(date.toString())
 
     /** Every critter in the barn, owned or not yet hatched has no row — this is "owned only". */
     fun observeAllCritters(): Flow<List<CritterEntity>> = critterDao.observeAll()
@@ -254,6 +275,34 @@ class GameRepository(
             multiplier = multiplier,
             freezeUsed = streak.freezeUsed,
         )
+    }
+
+    // --------------------------------------------------------------------------- quests ----
+
+    /**
+     * Pays out one of today's three quests. Idempotent per (day, quest) via the
+     * [QuestClaimEntity] composite key — a repeat tap returns [QuestClaimResult.AlreadyClaimed]
+     * rather than paying twice. A quest whose target isn't actually met yet is refused outright,
+     * so there is no way to bank a reward the day's log doesn't back up.
+     */
+    suspend fun claimQuest(date: LocalDate, questId: String): QuestClaimResult {
+        val quest = QuestCatalog.ALL.firstOrNull { it.id == questId } ?: return QuestClaimResult.UnknownQuest
+        val dateKey = date.toString()
+        if (questClaimDao.getClaim(dateKey, questId) != null) return QuestClaimResult.AlreadyClaimed
+
+        val log = dailySummaryLogDao.getByDate(dateKey)
+        if (!QuestRules.isComplete(quest, log)) return QuestClaimResult.NotComplete
+
+        val inventory = inventoryDao.getInventory(FarmInventoryEntity.SINGLETON_ID)
+            ?: return QuestClaimResult.NoInventory
+        inventoryDao.upsert(
+            inventory.copy(
+                coins = inventory.coins + quest.rewardCoins,
+                treats = inventory.treats + quest.rewardTreats,
+            ),
+        )
+        questClaimDao.insert(QuestClaimEntity(date = dateKey, questId = questId, claimedAt = System.currentTimeMillis()))
+        return QuestClaimResult.Claimed(quest, quest.rewardCoins, quest.rewardTreats)
     }
 
     // --------------------------------------------------------------------------- shopping ----
