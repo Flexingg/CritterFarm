@@ -24,4 +24,8 @@ data class CritterEntity(
     val mood: CritterMood,
     val lastFedAt: Long,
     val createdAt: Long,
+    /** The critter shown on the farm. Exactly one row may be true at a time. */
+    val isActive: Boolean = false,
+    /** When this critter joined the barn (hatch time), millis since epoch. */
+    val hatchedAt: Long = 0L,
 )

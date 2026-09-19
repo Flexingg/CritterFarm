@@ -54,13 +54,19 @@ answers the same three questions:
 
 ## Screenshots
 
-Captured from the `critterfarm_api35` emulator (Android 15) running **v1.2**. The local database
-was seeded with demo days so the heatmap and shop have something to show — the emulator has no
-Health Connect data, so these are not real user stats:
+Captured from the `critterfarm_api35` emulator (Android 15) running **v1.3**. The local database
+was seeded with demo days so the heatmap, shop and barn have something to show — the emulator has
+no Health Connect data, so these are not real user stats:
 
 | Sprout wearing a bought hat | The Barn Shop | Claim + streak payout | History heatmap |
 |---|---|---|---|
 | ![hat](docs/screenshots/04-v12-farm-hat.png) | ![shop](docs/screenshots/05-v12-shop.png) | ![claim](docs/screenshots/07-v12-celebration.png) | ![history](docs/screenshots/06-v12-history.png) |
+
+**v1.3 — the collection loop:**
+
+| The Barn (two species) | Evolution requirements met | The evolution | Evolved on the farm |
+|---|---|---|---|
+| ![barn](docs/screenshots/08-v13-barn.png) | ![ready](docs/screenshots/09-v13-evolve-ready.png) | ![evolved](docs/screenshots/10-v13-evolution.png) | ![stage1](docs/screenshots/11-v13-farm-stage1.png) |
 
 Earlier layout shots (v1.0 onboarding/navigation) are `01`–`03` in the same folder.
 
@@ -98,6 +104,41 @@ day, and lowest weigh-in — framed as a milestone (*"slow and steady wins"*), n
 All of it is computed from the daily logs the app already stored, so it needs **no new Health
 Connect permissions** and works offline.
 
+
+## The Barn — collecting, hatching and evolving
+
+Mana Sparks were a prestige curiosity in v1.2. v1.3 gives them the job that keeps a game like
+this interesting: **a barn of critters you collect, and three-stage evolutions you can see.**
+
+**Six species**, each with its own silhouette drawn with the same Canvas as everything else:
+
+| Species | Hatch cost | Unlocked by |
+|---|---|---|
+| Blob | free | the starter |
+| Pasture Bunny | 15 🔮 | any workout logged |
+| Sunrise Chick | 25 🔮 | 3 days hitting the steps target |
+| Pond Axolotl | 40 🔮 | 5 days hitting the hydration target |
+| Ember Drake | 60 🔮 | 10 days hitting the deficit target |
+| Cozy Sloth | 80 🔮 | 7 days hitting the sleep target |
+
+Unlocks are computed from the stored daily logs, so **you cannot buy a species you have not
+earned** — a locked card shows exactly what unlocks it, and the test suite proves a locked species
+stays unhatchable even with unlimited Sparks.
+
+**Evolution needs all three conditions at once**, and the progress is on screen at all times:
+
+| Stage | Level | Consistency | Sparks |
+|---|---|---|---|
+| Stage 1 | ≥ 5 | 7 days meeting 4+ of the 6 targets | 20 |
+| Stage 2 | ≥ 12 | 21 days meeting 4+ of the 6 targets | 50 |
+
+A player always sees the next requirement (`Stage 2 · Level 5/12 · 15/21 goal days · 50 sparks`),
+because an evolution you cannot see coming is not a goal — it is a lottery. Every species changes
+shape at each stage, and stage 1 adds a visible sparkle, so the payoff is something you look at.
+
+The barn is additive over v1.2: `MIGRATION_2_3` adds the new columns and marks your existing
+critter as the active one, so upgrading never loses a pet. The v1.2 → v1.3 upgrade was verified on
+a real seeded database (120 days of logs, coins, streak and equipped hat all preserved).
 
 ## Architecture
 
@@ -146,8 +187,8 @@ A signed release APK is published — no toolchain, no Android Studio:
 
 | Where | What |
 |---|---|
-| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.2-release.apk` (recommended) |
-| **In this repo** | [`dist/CritterFarm-1.2-release.apk`](dist/CritterFarm-1.2-release.apk) |
+| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.3-release.apk` (recommended) |
+| **In this repo** | [`dist/CritterFarm-1.3-release.apk`](dist/CritterFarm-1.3-release.apk) |
 
 Install: allow "install unknown apps" for your browser/file manager → open the APK → launch
 **CritterFarm**. Health Connect ships with Android 14+; on older devices grab it from the Play
@@ -156,7 +197,7 @@ sleepy "Dormant Zones".
 
 ```bash
 # confirm you got the same bytes we built
-sha256sum CritterFarm-1.2-release.apk     # compare to dist/CritterFarm-1.2-release.apk.sha256
+sha256sum CritterFarm-1.3-release.apk     # compare to dist/CritterFarm-1.3-release.apk.sha256
 ```
 
 The release APK is signed with a **4096-bit RSA** key (`CN=CritterFarm`, APK Signature Scheme

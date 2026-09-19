@@ -75,7 +75,7 @@ fun OnboardingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-            CritterCanvas(mood = CritterMood.BOUNCING_HAPPY)
+            CritterCanvas(mood = CritterMood.BOUNCING_HAPPY, speciesKey = "blob", stage = 0)
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "Meet Sprout the Blob!",

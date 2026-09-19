@@ -14,6 +14,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.critterfarm.data.Metric
+import com.critterfarm.ui.barn.BarnScreen
+import com.critterfarm.ui.barn.BarnViewModel
+import com.critterfarm.ui.barn.BarnViewModelFactory
 import com.critterfarm.ui.farm.FarmScreen
 import com.critterfarm.ui.farm.FarmViewModel
 import com.critterfarm.ui.farm.FarmViewModelFactory
@@ -30,6 +33,7 @@ import com.critterfarm.ui.theme.CritterFarmTheme
 private const val ROUTE_ONBOARDING = "onboarding"
 private const val ROUTE_FARM = "farm"
 private const val ROUTE_SHOP = "shop"
+private const val ROUTE_BARN = "barn"
 private const val ROUTE_HISTORY = "history"
 private const val ARG_FOCUS = "focus"
 
@@ -90,6 +94,19 @@ class MainActivity : ComponentActivity() {
                                     ?: ROUTE_HISTORY
                                 navController.navigate(route)
                             },
+                            onOpenBarn = { navController.navigate(ROUTE_BARN) },
+                        )
+                    }
+
+                    composable(ROUTE_BARN) {
+                        val viewModel: BarnViewModel = viewModel(
+                            factory = BarnViewModelFactory(app.gameRepository),
+                        )
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        BarnScreen(
+                            uiState = uiState,
+                            onIntent = viewModel::onIntent,
+                            onBack = { navController.popBackStack() },
                         )
                     }
 

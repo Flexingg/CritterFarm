@@ -11,6 +11,9 @@ interface DailySummaryLogDao {
     @Query("SELECT * FROM daily_summary_logs ORDER BY date DESC")
     fun observeAll(): Flow<List<DailySummaryLogEntity>>
 
+    @Query("SELECT * FROM daily_summary_logs ORDER BY date DESC")
+    suspend fun getAll(): List<DailySummaryLogEntity>
+
     @Query("SELECT * FROM daily_summary_logs WHERE date = :date LIMIT 1")
     fun observeByDate(date: String): Flow<DailySummaryLogEntity?>
 

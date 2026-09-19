@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.critterfarm.data.GameRules
+import com.critterfarm.data.SpeciesCatalog
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.DailySummaryLogEntity
 import com.critterfarm.data.local.FarmInventoryEntity
@@ -53,6 +54,7 @@ fun FarmScreen(
     onOpenOnboarding: () -> Unit,
     onOpenShop: () -> Unit,
     onOpenHistory: (GameZone?) -> Unit,
+    onOpenBarn: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -94,6 +96,7 @@ fun FarmScreen(
                 onOpenOnboarding = onOpenOnboarding,
                 onOpenShop = onOpenShop,
                 onOpenHistory = onOpenHistory,
+                onOpenBarn = onOpenBarn,
             )
         }
     }
@@ -152,6 +155,7 @@ private fun FarmContent(
     onOpenOnboarding: () -> Unit,
     onOpenShop: () -> Unit,
     onOpenHistory: (GameZone?) -> Unit,
+    onOpenBarn: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(
@@ -192,7 +196,10 @@ private fun FarmContent(
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = onOpenShop, modifier = Modifier.weight(1f)) {
-                        Text("🛍  Barn Shop")
+                        Text("🛍  Shop")
+                    }
+                    OutlinedButton(onClick = onOpenBarn, modifier = Modifier.weight(1f)) {
+                        Text("🐾  Barn")
                     }
                     OutlinedButton(onClick = { onOpenHistory(null) }, modifier = Modifier.weight(1f)) {
                         Text("📊  History")
@@ -226,7 +233,11 @@ private fun HeaderRow(critter: CritterEntity, inventory: FarmInventoryEntity?, i
         ) {
             Column {
                 Text(critter.name, style = MaterialTheme.typography.headlineMedium)
-                Text("Level ${critter.level}", style = MaterialTheme.typography.bodyMedium)
+                val species = SpeciesCatalog.bySpecies(critter.species)
+                Text(
+                    "Level ${critter.level} · ${species?.displayName ?: critter.species} · Stage ${critter.stage}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
             if (isSyncing) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp))
@@ -327,7 +338,12 @@ private fun CritterStage(
             modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            CritterCanvas(mood = critter.mood, hatId = hatId)
+            CritterCanvas(
+                mood = critter.mood,
+                speciesKey = critter.species,
+                stage = critter.stage,
+                hatId = hatId,
+            )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 "Hunger ${critter.hunger} · Happiness ${critter.happiness}",

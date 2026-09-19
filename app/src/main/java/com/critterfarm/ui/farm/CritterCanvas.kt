@@ -22,17 +22,20 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
+import com.critterfarm.data.Species
+import com.critterfarm.data.SpeciesCatalog
 import com.critterfarm.data.local.CritterMood
 import com.critterfarm.ui.theme.BerryPink
 import com.critterfarm.ui.theme.CoinGold
 import com.critterfarm.ui.theme.DormantGray
 import com.critterfarm.ui.theme.InkBrown
 import com.critterfarm.ui.theme.SkyBlue
-import com.critterfarm.ui.theme.SproutGreen
 import com.critterfarm.ui.theme.SunshineYellow
 import kotlinx.coroutines.delay
 import kotlin.math.PI
@@ -41,12 +44,35 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Sprout, drawn entirely with [Canvas] so its expression can react to [mood] in real time —
+ * Stage 0/1/2 grow the whole canvas by this factor. Every drawing measurement below is derived
+ * from `size` (the canvas's own pixel size), so scaling the canvas uniformly scales body, face
+ * and headroom together — the hat-headroom ratio validated for stage 0 (see [drawHat]) survives
+ * every stage and species unchanged. This is the "visibly bigger" half of the evolution payoff.
+ */
+private fun stageScale(stage: Int): Float = when (stage) {
+    2 -> 1.26f
+    1 -> 1.12f
+    else -> 1f
+}
+
+/**
+ * A critter, drawn entirely with [Canvas] so its expression can react to [mood] in real time —
  * no sprite sheet needed. The continuous idle motion runs on an [rememberInfiniteTransition];
  * the "pop" whenever [mood] changes runs on a spring via [animateFloatAsState], per spec.
+ *
+ * [speciesKey] picks the silhouette and palette ([SpeciesCatalog]); [stage] (0/1/2) picks the
+ * size and the extra evolution flourish. An unrecognised key falls back to the starter blob
+ * rather than drawing nothing.
  */
 @Composable
-fun CritterCanvas(mood: CritterMood, hatId: String? = null, modifier: Modifier = Modifier) {
+fun CritterCanvas(
+    mood: CritterMood,
+    speciesKey: String,
+    stage: Int,
+    hatId: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val species = SpeciesCatalog.bySpecies(speciesKey) ?: SpeciesCatalog.BLOB
     val cyclePeriodMs = when (mood) {
         CritterMood.CELEBRATING -> 650
         CritterMood.BOUNCING_HAPPY -> 1100
@@ -59,12 +85,14 @@ fun CritterCanvas(mood: CritterMood, hatId: String? = null, modifier: Modifier =
         CritterMood.SLUGGISH_TIRED -> 3f
         CritterMood.NEUTRAL -> 7f
     }
+    // Species colour is the base; mood still tints it (sleepy fades toward gray, celebrating
+    // warms toward berry) so the face isn't the only thing telling you how Sprout feels.
     val bodyColor = when (mood) {
-        CritterMood.CELEBRATING -> BerryPink
-        CritterMood.BOUNCING_HAPPY -> SproutGreen
-        CritterMood.SLUGGISH_TIRED -> DormantGray
-        CritterMood.NEUTRAL -> SproutGreen
+        CritterMood.SLUGGISH_TIRED -> lerp(species.primaryColor, DormantGray, 0.5f)
+        CritterMood.CELEBRATING -> lerp(species.primaryColor, BerryPink, 0.25f)
+        else -> species.primaryColor
     }
+    val sleepyEyes = speciesKey == SpeciesCatalog.SLOTH.key || mood == CritterMood.SLUGGISH_TIRED
 
     val infiniteTransition = rememberInfiniteTransition(label = "critterIdle")
     val cycle by infiniteTransition.animateFloat(
@@ -94,15 +122,24 @@ fun CritterCanvas(mood: CritterMood, hatId: String? = null, modifier: Modifier =
         pulseTarget = 1f
     }
 
-    Canvas(modifier = modifier.size(180.dp)) {
+    Canvas(modifier = modifier.size(180.dp * stageScale(stage))) {
         val bounceOffset = -abs(sin(cycle * 2f * PI.toFloat())) * bounceAmplitude
         // The body deliberately sits LOW in the canvas: hats are drawn above the head, and a
         // centred body left only ~11% headroom, so every hat was clipped off the top edge and
-        // looked like it was never drawn at all.
+        // looked like it was never drawn at all. Every measurement here is relative to `size`,
+        // so growing the whole canvas for stage 1/2 (above) scales body, face and headroom
+        // together — the tightest case (the halo hat) keeps the same safety margin at every
+        // stage and species.
         val bodyRadius = size.minDimension / 3.0f
         val center = Offset(size.width / 2f, size.height * 0.63f + bounceOffset)
 
         scale(scale, pivot = center) {
+            // Stage 2's aura sits behind everything else — a flourish, not a distraction.
+            if (stage >= 2) drawAura(center, bodyRadius, species.accentColor)
+            // Ears/horns/wings sit behind the body so the body circle covers their base, like
+            // they're actually attached rather than floating.
+            drawSpeciesFeatures(species, center, bodyRadius)
+
             drawCircle(color = bodyColor, radius = bodyRadius, center = center)
 
             // Cheeks
@@ -119,8 +156,10 @@ fun CritterCanvas(mood: CritterMood, hatId: String? = null, modifier: Modifier =
                 center = center + Offset(cheekOffsetX, cheekOffsetY),
             )
 
-            drawEyes(mood, center, bodyRadius, cycle)
+            drawEyes(mood, center, bodyRadius, cycle, sleepy = sleepyEyes)
             drawMouth(mood, center, bodyRadius)
+            // Stage 1+ gets one small extra detail — visible proof an evolution happened.
+            if (stage >= 1) drawStageMark(center, bodyRadius, species.accentColor)
             // Whatever you bought, Sprout actually wears it.
             hatId?.let { drawHat(it, center, bodyRadius) }
         }
@@ -136,6 +175,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawEyes(
     center: Offset,
     bodyRadius: Float,
     cycle: Float,
+    sleepy: Boolean = false,
 ) {
     val eyeOffsetX = bodyRadius * 0.42f
     val eyeOffsetY = -bodyRadius * 0.1f
@@ -143,7 +183,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawEyes(
     val rightEye = center + Offset(eyeOffsetX, eyeOffsetY)
     val eyeRadius = bodyRadius * 0.16f
 
-    if (mood == CritterMood.SLUGGISH_TIRED) {
+    if (sleepy || mood == CritterMood.SLUGGISH_TIRED) {
         // Half-closed, drowsy eyes: a flat arc instead of a full circle.
         val strokeWidth = eyeRadius * 0.6f
         drawArc(
@@ -243,6 +283,137 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSparkles(
             drawLine(SunshineYellow, position - Offset(0f, sparkleSize), position + Offset(0f, sparkleSize), strokeWidth = sparkleSize * 0.35f)
         }
     }
+}
+
+/**
+ * The silhouette that tells species apart at a glance, drawn *behind* the body circle so it
+ * reads as attached (ears, horns and wings all poke out from underneath). Every measurement is
+ * a fraction of [bodyRadius], and every feature stays well under the ~0.84×[bodyRadius] the
+ * tallest hat (the halo) needs above the head — see [drawHat] — so species art never competes
+ * with a worn hat for headroom.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSpeciesFeatures(
+    species: Species,
+    center: Offset,
+    bodyRadius: Float,
+) {
+    val headTop = center.y - bodyRadius
+    when (species.key) {
+        SpeciesCatalog.BUNNY.key -> {
+            val earHeight = bodyRadius * 0.75f
+            val earWidth = bodyRadius * 0.26f
+            for (side in listOf(-1f, 1f)) {
+                val earBase = center + Offset(side * bodyRadius * 0.35f, -bodyRadius * 0.1f)
+                drawOval(
+                    color = species.primaryColor,
+                    topLeft = Offset(earBase.x - earWidth / 2f, earBase.y - earHeight),
+                    size = Size(earWidth, earHeight),
+                )
+                drawOval(
+                    color = species.accentColor.copy(alpha = 0.6f),
+                    topLeft = Offset(earBase.x - earWidth * 0.3f, earBase.y - earHeight * 0.85f),
+                    size = Size(earWidth * 0.6f, earHeight * 0.65f),
+                )
+            }
+        }
+
+        SpeciesCatalog.CHICK.key -> {
+            val beak = Path().apply {
+                moveTo(center.x - bodyRadius * 0.14f, center.y + bodyRadius * 0.02f)
+                lineTo(center.x + bodyRadius * 0.14f, center.y + bodyRadius * 0.02f)
+                lineTo(center.x, center.y + bodyRadius * 0.22f)
+                close()
+            }
+            drawPath(beak, species.accentColor)
+            for (side in listOf(-1f, 1f)) {
+                drawOval(
+                    color = species.accentColor.copy(alpha = 0.85f),
+                    topLeft = Offset(
+                        center.x + side * bodyRadius * 0.75f - bodyRadius * 0.18f,
+                        center.y - bodyRadius * 0.05f,
+                    ),
+                    size = Size(bodyRadius * 0.36f, bodyRadius * 0.5f),
+                )
+            }
+        }
+
+        SpeciesCatalog.AXOLOTL.key -> {
+            for (side in listOf(-1f, 1f)) {
+                repeat(3) { i ->
+                    val y = center.y - bodyRadius * 0.15f + i * bodyRadius * 0.22f
+                    drawLine(
+                        color = species.accentColor,
+                        start = Offset(center.x + side * bodyRadius * 0.95f, y),
+                        end = Offset(center.x + side * bodyRadius * 1.25f, y - bodyRadius * 0.12f),
+                        strokeWidth = bodyRadius * 0.09f,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+        }
+
+        SpeciesCatalog.DRAGON.key -> {
+            for (side in listOf(-1f, 1f)) {
+                val horn = Path().apply {
+                    moveTo(center.x + side * bodyRadius * 0.28f, headTop + bodyRadius * 0.15f)
+                    lineTo(center.x + side * bodyRadius * 0.48f, headTop - bodyRadius * 0.35f)
+                    lineTo(center.x + side * bodyRadius * 0.14f, headTop + bodyRadius * 0.05f)
+                    close()
+                }
+                drawPath(horn, species.accentColor)
+                drawOval(
+                    color = species.accentColor.copy(alpha = 0.7f),
+                    topLeft = Offset(
+                        center.x + side * bodyRadius * 0.85f - bodyRadius * 0.2f,
+                        center.y - bodyRadius * 0.3f,
+                    ),
+                    size = Size(bodyRadius * 0.4f, bodyRadius * 0.6f),
+                )
+            }
+        }
+
+        // Sloth's tell is the sleepy eyes (forced on regardless of mood, see sleepyEyes above)
+        // and blob has no extra feature at all — it's still just the circle, per spec.
+        else -> Unit
+    }
+}
+
+/** Stage 1's "one extra detail": a small sparkle mark, sized off the body so it scales with it. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStageMark(
+    center: Offset,
+    bodyRadius: Float,
+    color: Color,
+) {
+    val markCenter = center + Offset(bodyRadius * 0.55f, -bodyRadius * 0.55f)
+    val arm = bodyRadius * 0.14f
+    val strokeWidth = arm * 0.45f
+    drawLine(color, markCenter - Offset(arm, 0f), markCenter + Offset(arm, 0f), strokeWidth = strokeWidth, cap = StrokeCap.Round)
+    drawLine(color, markCenter - Offset(0f, arm), markCenter + Offset(0f, arm), strokeWidth = strokeWidth, cap = StrokeCap.Round)
+}
+
+/**
+ * Stage 2's "visible aura or extra flourish": two translucent rings around the body. The outer
+ * ring reaches 1.35×[bodyRadius] from the centre — only ~0.35×[bodyRadius] above the head, well
+ * under the halo hat's ~0.84×[bodyRadius] headroom budget, so it never pushes a worn hat off
+ * the top of the canvas.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAura(
+    center: Offset,
+    bodyRadius: Float,
+    color: Color,
+) {
+    drawCircle(
+        color = color.copy(alpha = 0.35f),
+        radius = bodyRadius * 1.22f,
+        center = center,
+        style = Stroke(width = bodyRadius * 0.16f),
+    )
+    drawCircle(
+        color = color.copy(alpha = 0.18f),
+        radius = bodyRadius * 1.35f,
+        center = center,
+        style = Stroke(width = bodyRadius * 0.10f),
+    )
 }
 
 /**

@@ -57,6 +57,30 @@ sealed class FeedResult {
     data object NoTreats : FeedResult()
 }
 
+/** Outcome of trying to hatch a new critter. */
+sealed class HatchResult {
+    data class Hatched(val critter: CritterEntity) : HatchResult()
+
+    /** The species' unlock requirement is not yet met — no amount of sparks changes that. */
+    data class Locked(val species: Species) : HatchResult()
+
+    data class CannotAfford(val species: Species, val shortfall: Int) : HatchResult()
+
+    data object UnknownSpecies : HatchResult()
+
+    data object NoInventory : HatchResult()
+}
+
+/** Outcome of trying to evolve the active critter. */
+sealed class EvolveResult {
+    data class Evolved(val critter: CritterEntity, val newStage: Int) : EvolveResult()
+
+    /** The consistency gate (level + goal days) is not yet met — sparks would not have helped. */
+    data class NotReady(val requirement: EvolutionRequirement) : EvolveResult()
+
+    data class CannotAfford(val shortfall: Int) : EvolveResult()
+}
+
 /**
  * The single source of truth for game state. Wraps the Room DAOs and applies [GameRules] so
  * callers (view models) never touch reward math or persistence directly.
@@ -66,10 +90,14 @@ class GameRepository(
     private val inventoryDao: FarmInventoryDao,
     private val dailySummaryLogDao: DailySummaryLogDao,
 ) {
-    val critter: Flow<CritterEntity?> = critterDao.observeCritter()
+    /** The active critter — the one shown on the farm. Exactly one row is ever active. */
+    val critter: Flow<CritterEntity?> = critterDao.observeActive()
     val inventory: Flow<FarmInventoryEntity?> =
         inventoryDao.observeInventory(FarmInventoryEntity.SINGLETON_ID)
     val dailyLogs: Flow<List<DailySummaryLogEntity>> = dailySummaryLogDao.observeAll()
+
+    /** Every critter in the barn, owned or not yet hatched has no row — this is "owned only". */
+    fun observeAllCritters(): Flow<List<CritterEntity>> = critterDao.observeAll()
 
     fun observeDailyLog(date: LocalDate): Flow<DailySummaryLogEntity?> =
         dailySummaryLogDao.observeByDate(date.toString())
@@ -80,20 +108,22 @@ class GameRepository(
 
     /** Seeds "Sprout the Blob" and an empty inventory on first launch. Safe to call repeatedly. */
     suspend fun ensureInitialGameState() {
-        if (critterDao.getCritter() == null) {
+        if (critterDao.getAll().isEmpty()) {
             val now = System.currentTimeMillis()
             critterDao.insert(
                 CritterEntity(
                     name = STARTER_CRITTER_NAME,
-                    species = "Blob",
+                    species = SpeciesCatalog.BLOB.key,
                     stage = 0,
                     xp = 0,
                     level = 1,
-                    happiness = 80,
-                    hunger = 30,
+                    happiness = STARTER_HAPPINESS,
+                    hunger = STARTER_HUNGER,
                     mood = CritterMood.BOUNCING_HAPPY,
                     lastFedAt = now,
                     createdAt = now,
+                    isActive = true,
+                    hatchedAt = now,
                 ),
             )
         }
@@ -181,7 +211,7 @@ class GameRepository(
         val hydrationBoost = GameRules.hydrationMoodBoost(log.hydrationMl)
         val xpEarned = coinsEarned + treatsEarned * 4 + manaSparksEarned * 3 + hydrationBoost
 
-        critterDao.getCritter()?.let { critter ->
+        critterDao.getActive()?.let { critter ->
             val leveledUp = GameRules.applyXp(critter, xpEarned)
             critterDao.update(
                 leveledUp.copy(
@@ -287,7 +317,7 @@ class GameRepository(
             ?: return FeedResult.NoTreats
         if (inventory.treats <= 0) return FeedResult.NoTreats
 
-        val critter = critterDao.getCritter() ?: return FeedResult.NoTreats
+        val critter = critterDao.getActive() ?: return FeedResult.NoTreats
         val outcome = GameRules.feed(critter.happiness, critter.hunger)
 
         critterDao.update(
@@ -308,9 +338,101 @@ class GameRepository(
         )
     }
 
+    // -------------------------------------------------------------------------- the barn ----
+
+    /**
+     * Hatches a new critter of [speciesKey]. Locked species can never be hatched, no matter the
+     * sparks on hand — the unlock check runs before the affordability check on purpose. The new
+     * critter starts at the same friendly baseline as the very first critter, and only becomes
+     * active if the barn was empty (never bumps whatever's currently on the farm).
+     */
+    suspend fun hatchCritter(speciesKey: String, name: String?): HatchResult {
+        val species = SpeciesCatalog.bySpecies(speciesKey) ?: return HatchResult.UnknownSpecies
+        val inventory = inventoryDao.getInventory(FarmInventoryEntity.SINGLETON_ID)
+            ?: return HatchResult.NoInventory
+        val logs = dailySummaryLogDao.getAll()
+
+        if (!HatchRules.isUnlocked(species, logs)) return HatchResult.Locked(species)
+        if (!HatchRules.canAfford(species, inventory.manaSparks)) {
+            return HatchResult.CannotAfford(species, HatchRules.shortfall(species, inventory.manaSparks))
+        }
+
+        val isFirstCritter = critterDao.getAll().isEmpty()
+        val now = System.currentTimeMillis()
+        val resolvedName = name?.trim()?.take(MAX_NAME_LENGTH)?.takeIf { it.isNotBlank() }
+            ?: species.displayName
+        val newCritter = CritterEntity(
+            name = resolvedName,
+            species = species.key,
+            stage = 0,
+            xp = 0,
+            level = 1,
+            happiness = STARTER_HAPPINESS,
+            hunger = STARTER_HUNGER,
+            mood = CritterMood.BOUNCING_HAPPY,
+            lastFedAt = now,
+            createdAt = now,
+            isActive = isFirstCritter,
+            hatchedAt = now,
+        )
+        val id = critterDao.insert(newCritter)
+        inventoryDao.upsert(inventory.copy(manaSparks = inventory.manaSparks - species.hatchCostSparks))
+        return HatchResult.Hatched(newCritter.copy(id = id))
+    }
+
+    /**
+     * Evolves the active critter to its next stage. The consistency gate
+     * ([EvolutionRequirement.behaviorMet]) is checked before affordability, so a player who is
+     * ready but short on sparks sees [EvolveResult.CannotAfford] rather than being told to keep
+     * training — the training part is already done.
+     */
+    suspend fun evolveActiveCritter(): EvolveResult {
+        val critter = critterDao.getActive()
+            ?: return EvolveResult.NotReady(
+                EvolutionRequirement(
+                    stage = 1,
+                    minLevel = 0,
+                    minGoalDays = 0,
+                    sparkCost = 0,
+                    behaviorMet = false,
+                    met = false,
+                    progressText = "No critter on the farm yet.",
+                ),
+            )
+        val nextStage = critter.stage + 1
+        val inventory = inventoryDao.getInventory(FarmInventoryEntity.SINGLETON_ID)
+            ?: return EvolveResult.CannotAfford(0)
+        val logs = dailySummaryLogDao.getAll()
+        val requirement = EvolutionRules.requirementFor(nextStage, logs, critter, inventory.manaSparks)
+
+        if (!requirement.behaviorMet) return EvolveResult.NotReady(requirement)
+        if (inventory.manaSparks < requirement.sparkCost) {
+            return EvolveResult.CannotAfford(requirement.sparkCost - inventory.manaSparks)
+        }
+
+        val evolved = critter.copy(stage = nextStage)
+        critterDao.update(evolved)
+        inventoryDao.upsert(inventory.copy(manaSparks = inventory.manaSparks - requirement.sparkCost))
+        return EvolveResult.Evolved(evolved, nextStage)
+    }
+
+    /** Makes [id] the one critter shown on the farm; every other critter is cleared. */
+    suspend fun setActiveCritter(id: Long) {
+        critterDao.setActiveExclusive(id)
+    }
+
+    /** Renames a critter. Blank (after trim) names are rejected rather than saved empty. */
+    suspend fun renameCritter(id: Long, name: String): Boolean {
+        val trimmed = name.trim().take(MAX_NAME_LENGTH)
+        if (trimmed.isBlank()) return false
+        val critter = critterDao.getById(id) ?: return false
+        critterDao.update(critter.copy(name = trimmed))
+        return true
+    }
+
     private suspend fun refreshMood(date: LocalDate) {
         val log = dailySummaryLogDao.getByDate(date.toString()) ?: return
-        val critter = critterDao.getCritter() ?: return
+        val critter = critterDao.getActive() ?: return
         critterDao.update(
             critter.copy(
                 mood = GameRules.deriveMood(critter, log.steps, log.workouts, log.chestClaimed),
@@ -320,5 +442,8 @@ class GameRepository(
 
     companion object {
         const val STARTER_CRITTER_NAME = "Sprout the Blob"
+        const val STARTER_HAPPINESS = 80
+        const val STARTER_HUNGER = 30
+        const val MAX_NAME_LENGTH = 16
     }
 }

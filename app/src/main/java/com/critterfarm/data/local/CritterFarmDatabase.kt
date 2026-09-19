@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [CritterEntity::class, FarmInventoryEntity::class, DailySummaryLogEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 @TypeConverters(CritterMoodConverters::class)
@@ -37,6 +37,26 @@ abstract class CritterFarmDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 adds the barn: `isActive` (exactly one critter shown on the farm) and `hatchedAt`.
+         * Additive with defaults, same as v2 — the upgrading player's single existing critter is
+         * flagged active and its hatch date backfilled from `createdAt` so the barn has something
+         * sensible to show, rather than the epoch. Species is also lower-cased to match the new
+         * catalogue's keys ("Blob" -> "blob"); pre-v1.3 saves only ever wrote that one value.
+         * Destructive migration is never acceptable.
+         */
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE critters ADD COLUMN isActive INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE critters ADD COLUMN hatchedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE critters SET species = lower(species)")
+                db.execSQL("UPDATE critters SET hatchedAt = createdAt")
+                db.execSQL(
+                    "UPDATE critters SET isActive = 1 WHERE id = (SELECT MIN(id) FROM critters)",
+                )
+            }
+        }
+
         fun getInstance(context: Context): CritterFarmDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -44,7 +64,7 @@ abstract class CritterFarmDatabase : RoomDatabase() {
                     CritterFarmDatabase::class.java,
                     "critterfarm.db",
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }
