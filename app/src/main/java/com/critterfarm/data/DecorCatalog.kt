@@ -1,5 +1,7 @@
 package com.critterfarm.data
 
+import java.time.LocalDate
+
 /**
  * Decoration categories. Slots exist so the shop can group items and so the scene can hint where
  * something belongs — they do not restrict placement, because telling a player their lantern
@@ -26,6 +28,12 @@ data class DecorItem(
     val blurb: String,
     val price: Int,
     val slot: DecorSlot,
+    /**
+     * Set only for a seasonal-event exclusive. The item is absent from the catalogue entirely
+     * outside that event's window — see [DecorCatalog.availableOn] — which is what makes it
+     * scarce rather than merely labelled.
+     */
+    val eventId: String? = null,
 )
 
 object DecorCatalog {
@@ -53,7 +61,7 @@ object DecorCatalog {
         DecorItem(
             "decor_lantern", "Farm Lantern", "\uD83C\uDFEE",
             "Keeps the evening chores from being a stumbling contest.",
-            250, DecorSlot.STRUCTURE,
+            250, DecorSlot.STRUCTURE, eventId = "harvest_moon",
         ),
         DecorItem(
             "decor_logs", "Log Pile", "\uD83E\uDEB5",
@@ -78,12 +86,12 @@ object DecorCatalog {
         DecorItem(
             "decor_appletree", "Apple Tree", "\uD83C\uDF33",
             "Shade in summer, snacks in autumn, somewhere to lean all year.",
-            750, DecorSlot.GROUND,
+            750, DecorSlot.GROUND, eventId = "harvest_moon",
         ),
         DecorItem(
             "decor_sunflowers", "Sunflower Row", "\uD83C\uDF3B",
             "A row of them, all facing the same way, showing off.",
-            900, DecorSlot.GROUND,
+            900, DecorSlot.GROUND, eventId = "harvest_moon",
         ),
         DecorItem(
             "decor_fountain", "Stone Fountain", "\u26F2",
@@ -101,4 +109,16 @@ object DecorCatalog {
 
     /** Cheapest first — the order the shop should offer them in. */
     val BY_PRICE: List<DecorItem> = ALL.sortedBy { it.price }
+
+    /**
+     * Every normal item, plus any event-exclusive item whose event is running on [date]. Outside
+     * its window an event item is not in this list at all — that absence, not a UI label, is what
+     * makes it scarce.
+     */
+    fun availableOn(date: LocalDate): List<DecorItem> = ALL.filter { item ->
+        item.eventId == null || EventCatalog.isActive(item.eventId, date)
+    }
+
+    /** Cheapest first, restricted to what is actually purchasable on [date]. */
+    fun byPriceOn(date: LocalDate): List<DecorItem> = availableOn(date).sortedBy { it.price }
 }

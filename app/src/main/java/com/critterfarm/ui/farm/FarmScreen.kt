@@ -27,6 +27,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,8 +41,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.critterfarm.data.FarmEvent
 import com.critterfarm.data.GameRules
 import com.critterfarm.data.Quest
+import com.critterfarm.data.RepairOption
 import com.critterfarm.data.SpeciesCatalog
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.DailySummaryLogEntity
@@ -52,6 +55,8 @@ import com.critterfarm.ui.theme.CoinGold
 import com.critterfarm.ui.theme.EmberOrange
 import com.critterfarm.ui.theme.PastureGreenLight
 import com.critterfarm.ui.theme.SlumberLavender
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun FarmScreen(
@@ -64,6 +69,7 @@ fun FarmScreen(
     onOpenBadges: () -> Unit,
     onOpenDecor: () -> Unit,
     onOpenRecap: () -> Unit,
+    onOpenChallenges: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val haptics = LocalHapticFeedback.current
@@ -116,9 +122,14 @@ fun FarmScreen(
                 zoneStreaks = uiState.zoneStreaks,
                 todayQuests = uiState.todayQuests,
                 claimedQuestIds = uiState.claimedQuestIds,
+                activeEvent = uiState.activeEvent,
+                eventDaysLeft = uiState.eventDaysLeft,
+                repairOption = if (uiState.showRepairCard) uiState.repairOption else null,
                 onClaim = { onIntent(FarmIntent.ClaimDailyTurn) },
                 onFeed = { onIntent(FarmIntent.FeedCritter) },
                 onClaimQuest = { questId -> onIntent(FarmIntent.ClaimQuest(questId)) },
+                onRepairStreak = { onIntent(FarmIntent.RepairStreak) },
+                onDismissRepairOffer = { onIntent(FarmIntent.DismissRepairOffer) },
                 onOpenOnboarding = onOpenOnboarding,
                 onOpenShop = onOpenShop,
                 onOpenHistory = onOpenHistory,
@@ -126,6 +137,7 @@ fun FarmScreen(
                 onOpenBadges = onOpenBadges,
                 onOpenDecor = onOpenDecor,
                 onOpenRecap = onOpenRecap,
+                onOpenChallenges = onOpenChallenges,
             )
         }
         }
@@ -186,9 +198,14 @@ private fun FarmContent(
     zoneStreaks: Map<GameZone, Int>,
     todayQuests: List<Quest>,
     claimedQuestIds: Set<String>,
+    activeEvent: FarmEvent?,
+    eventDaysLeft: Int,
+    repairOption: RepairOption?,
     onClaim: () -> Unit,
     onFeed: () -> Unit,
     onClaimQuest: (String) -> Unit,
+    onRepairStreak: () -> Unit,
+    onDismissRepairOffer: () -> Unit,
     onOpenOnboarding: () -> Unit,
     onOpenShop: () -> Unit,
     onOpenHistory: (GameZone?) -> Unit,
@@ -196,6 +213,7 @@ private fun FarmContent(
     onOpenBadges: () -> Unit,
     onOpenDecor: () -> Unit,
     onOpenRecap: () -> Unit,
+    onOpenChallenges: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(
@@ -204,6 +222,22 @@ private fun FarmContent(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item { HeaderRow(critter = critter, inventory = inventory, isSyncing = isSyncing) }
+
+            activeEvent?.let { event ->
+                item {
+                    ActiveEventBanner(event = event, daysLeft = eventDaysLeft, onOpenChallenges = onOpenChallenges)
+                }
+            }
+
+            repairOption?.let { option ->
+                item {
+                    StreakRepairCard(
+                        option = option,
+                        onRepair = onRepairStreak,
+                        onLetItGo = onDismissRepairOffer,
+                    )
+                }
+            }
 
             item {
                 StreakCard(
@@ -263,8 +297,16 @@ private fun FarmContent(
                     OutlinedButton(onClick = onOpenDecor, modifier = Modifier.weight(1f)) {
                         Text("🌻  Decor")
                     }
+                }
+            }
+
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = onOpenRecap, modifier = Modifier.weight(1f)) {
                         Text("📅  Week")
+                    }
+                    OutlinedButton(onClick = onOpenChallenges, modifier = Modifier.weight(1f)) {
+                        Text("🎯  Challenges")
                     }
                 }
             }
@@ -383,6 +425,75 @@ private fun StreakCard(
 
 private fun trimmed(value: Double): String =
     if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
+
+/** "Sep 19" reads like a day of the week; an ISO string reads like a database row. */
+private val REPAIR_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d", Locale.US)
+
+/** Only shown while a seasonal event is actually running — the common state is no banner at all. */
+@Composable
+private fun ActiveEventBanner(event: FarmEvent, daysLeft: Int, onOpenChallenges: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = SlumberLavender.copy(alpha = 0.18f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(event.emoji, style = MaterialTheme.typography.headlineSmall)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(event.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    event.blurb,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    if (daysLeft == 0) "Last day!" else "$daysLeft day${if (daysLeft == 1) "" else "s"} left",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SlumberLavender,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            TextButton(onClick = onOpenChallenges) { Text("View") }
+        }
+    }
+}
+
+/**
+ * The second chance: what happened, the honest price, and two buttons that are both fine to tap.
+ * "Let it go" is never styled or worded as a loss — the whole point of this card is that skipping
+ * it is a completely reasonable choice.
+ */
+@Composable
+private fun StreakRepairCard(option: RepairOption, onRepair: () -> Unit, onLetItGo: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🩹", style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Looks like ${option.missedDate.format(REPAIR_DATE)} got missed",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "For ${option.cost} coins you can protect the ${option.streakDaysRestored}-day chain. " +
+                    "This only patches the streak — it pays no coins, treats or sparks for the day itself.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = onRepair) { Text("Repair the streak") }
+                OutlinedButton(onClick = onLetItGo) { Text("Let it go") }
+            }
+        }
+    }
+}
 
 @Composable
 private fun CritterStage(

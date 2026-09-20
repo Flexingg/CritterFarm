@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.critterfarm.data.ClaimResult
+import com.critterfarm.data.EventCatalog
+import com.critterfarm.data.FarmEvent
 import com.critterfarm.data.FeedResult
 import com.critterfarm.data.GameRepository
 import com.critterfarm.data.GameRules
@@ -11,6 +13,9 @@ import com.critterfarm.data.Quest
 import com.critterfarm.data.QuestCatalog
 import com.critterfarm.data.QuestClaimResult
 import com.critterfarm.data.QuestsForDay
+import com.critterfarm.data.RepairOption
+import com.critterfarm.data.RepairResult
+import com.critterfarm.data.StreakRepairRules
 import com.critterfarm.data.StreakRules
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.DailySummaryLogEntity
@@ -28,6 +33,7 @@ import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 /** Intents in, state out — the Farm screen never mutates state directly. */
 sealed class FarmIntent {
@@ -48,6 +54,12 @@ sealed class FarmIntent {
 
     /** Tap Claim on a completed-unclaimed quest. */
     data class ClaimQuest(val questId: String) : FarmIntent()
+
+    /** Buy back the chain after a single missed day. */
+    data object RepairStreak : FarmIntent()
+
+    /** "Let it go" — hide today's repair offer without judging the choice. */
+    data object DismissRepairOffer : FarmIntent()
 }
 
 data class FarmUiState(
@@ -65,6 +77,8 @@ data class FarmUiState(
     val todayQuests: List<Quest> = QuestsForDay.forDate(LocalDate.now(), QuestCatalog.ALL),
     val claimedQuestIds: Set<String> = emptySet(),
     val zoneStreaks: Map<GameZone, Int> = emptyMap(),
+    val repairOption: RepairOption? = null,
+    val repairOfferDismissed: Boolean = false,
 ) {
     val dormantZones: List<GameZone>
         get() = GameZone.entries.filter { it.isDormant(grantedPermissions) }
@@ -77,6 +91,13 @@ data class FarmUiState(
     val bestStreak: Int get() = inventory?.bestStreak ?: 0
     val streakFreezes: Int get() = inventory?.streakFreezes ?: 0
     val streakMultiplier: Double get() = GameRules.claimMultiplier(streakDays)
+
+    /** The seasonal event running right now, if any — null the vast majority of the year. */
+    val activeEvent: FarmEvent? get() = EventCatalog.activeOn(LocalDate.now())
+    val eventDaysLeft: Int
+        get() = activeEvent?.let { ChronoUnit.DAYS.between(LocalDate.now(), it.end).toInt().coerceAtLeast(0) } ?: 0
+
+    val showRepairCard: Boolean get() = repairOption != null && !repairOfferDismissed
 }
 
 /**
@@ -104,6 +125,8 @@ class FarmViewModel(
             FarmIntent.DismissMessage -> _uiState.update { it.copy(snackbarMessage = null) }
             FarmIntent.FeedCritter -> feedCritter()
             is FarmIntent.ClaimQuest -> claimQuest(intent.questId)
+            FarmIntent.RepairStreak -> repairStreak()
+            FarmIntent.DismissRepairOffer -> _uiState.update { it.copy(repairOfferDismissed = true) }
         }
     }
 
@@ -113,6 +136,7 @@ class FarmViewModel(
         val todayLog: DailySummaryLogEntity?,
         val claimedQuestIds: Set<String>,
         val zoneStreaks: Map<GameZone, Int>,
+        val repairOption: RepairOption?,
     )
 
     private fun observeLocalState() {
@@ -133,6 +157,15 @@ class FarmViewModel(
                     zoneStreaks = GameZone.entries.associateWith { zone ->
                         StreakRules.currentStreak(allLogs, zone.toMetric(), today)
                     },
+                    repairOption = inventory?.let {
+                        StreakRepairRules.canRepair(
+                            streakDays = it.claimStreak,
+                            lastClaimedDate = it.lastClaimedDate,
+                            lastRepairedGapDate = it.lastRepairedGapDate,
+                            today = today,
+                            coins = it.coins,
+                        )
+                    },
                 )
             }.collect { state ->
                 _uiState.update {
@@ -143,6 +176,7 @@ class FarmViewModel(
                         todayLog = state.todayLog,
                         claimedQuestIds = state.claimedQuestIds,
                         zoneStreaks = state.zoneStreaks,
+                        repairOption = state.repairOption,
                     )
                 }
             }
@@ -273,6 +307,31 @@ class FarmViewModel(
                 }
                 QuestClaimResult.UnknownQuest, QuestClaimResult.NoInventory -> _uiState.update {
                     it.copy(snackbarMessage = "Couldn't claim that one — try again in a moment.")
+                }
+            }
+        }
+    }
+
+    /**
+     * Buys back the chain after one missed day. Never pays a reward — the snackbar copy says so
+     * explicitly, because the whole point of this feature is that it protects the streak, not the
+     * work that would have earned yesterday's coins.
+     */
+    private fun repairStreak() {
+        viewModelScope.launch {
+            when (val result = gameRepository.repairStreak(LocalDate.now())) {
+                is RepairResult.Repaired -> _uiState.update {
+                    it.copy(
+                        repairOfferDismissed = true,
+                        snackbarMessage = "Streak repaired for ${result.option.cost} 🪙 — the chain " +
+                            "is safe, but yesterday still earned nothing extra.",
+                    )
+                }
+                is RepairResult.CannotAfford -> _uiState.update {
+                    it.copy(snackbarMessage = "Repairing costs ${result.shortfall} more coins than you have.")
+                }
+                is RepairResult.NotAvailable -> _uiState.update {
+                    it.copy(snackbarMessage = "Nothing to repair right now.")
                 }
             }
         }

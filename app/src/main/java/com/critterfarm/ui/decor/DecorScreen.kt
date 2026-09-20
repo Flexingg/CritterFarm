@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -35,6 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.critterfarm.data.DecorCatalog
 import com.critterfarm.data.DecorItem
+import com.critterfarm.data.EventCatalog
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 /**
  * Buy decorations and lay out the farm.
@@ -133,7 +137,36 @@ fun DecorScreen(
                 Spacer(Modifier.height(4.dp))
             }
 
-            items(DecorCatalog.BY_PRICE) { item ->
+            uiState.eventItems.takeIf { it.isNotEmpty() }?.let { eventItems ->
+                val event = EventCatalog.byId(eventItems.first().eventId!!)
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    EventSectionHeader(
+                        name = event?.name ?: "Event",
+                        emoji = event?.emoji ?: "✨",
+                        daysLeft = event?.let { ChronoUnit.DAYS.between(LocalDate.now(), it.end).toInt().coerceAtLeast(0) } ?: 0,
+                    )
+                }
+                items(eventItems) { item ->
+                    DecorCard(
+                        item = item,
+                        coins = uiState.coins,
+                        standing = uiState.countsByItem[item.id] ?: 0,
+                        selected = uiState.selectedItemId == item.id,
+                        onSelect = {
+                            onIntent(
+                                DecorIntent.SelectItem(
+                                    if (uiState.selectedItemId == item.id) null else item.id,
+                                ),
+                            )
+                        },
+                    )
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text("Everyday decorations", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            items(uiState.normalItems) { item ->
                 DecorCard(
                     item = item,
                     coins = uiState.coins,
@@ -158,6 +191,22 @@ fun DecorScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun EventSectionHeader(name: String, emoji: String, daysLeft: Int) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(emoji, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(6.dp))
+            Text("$name exclusives", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        }
+        Text(
+            if (daysLeft == 0) "Last day to grab these!" else "$daysLeft day${if (daysLeft == 1) "" else "s"} left to grab these",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

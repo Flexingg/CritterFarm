@@ -15,8 +15,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DailySummaryLogEntity::class,
         QuestClaimEntity::class,
         DecorPlacementEntity::class,
+        ChallengeClaimEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 @TypeConverters(CritterMoodConverters::class)
@@ -26,6 +27,7 @@ abstract class CritterFarmDatabase : RoomDatabase() {
     abstract fun dailySummaryLogDao(): DailySummaryLogDao
     abstract fun questClaimDao(): QuestClaimDao
     abstract fun decorPlacementDao(): DecorPlacementDao
+    abstract fun challengeClaimDao(): ChallengeClaimDao
 
     companion object {
         @Volatile
@@ -105,6 +107,29 @@ abstract class CritterFarmDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v6 adds challenges: a claims table keyed by (period, challengeId), exactly like quests
+         * but scoped to a week/month/event instead of a day, plus one nullable column recording
+         * the last streak gap a repair has already covered. Both are purely additive — no
+         * existing table changes shape, and the new column needs no default because it is
+         * nullable — so an upgrading farm's coins, critters, decor and history are untouched.
+         */
+        val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS challenge_claims (
+                        periodKey TEXT NOT NULL,
+                        challengeId TEXT NOT NULL,
+                        claimedAt INTEGER NOT NULL,
+                        PRIMARY KEY(periodKey, challengeId)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL("ALTER TABLE farm_inventory ADD COLUMN lastRepairedGapDate TEXT")
+            }
+        }
+
         fun getInstance(context: Context): CritterFarmDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -112,7 +137,13 @@ abstract class CritterFarmDatabase : RoomDatabase() {
                     CritterFarmDatabase::class.java,
                     "critterfarm.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                    )
                     .build()
                     .also { instance = it }
             }

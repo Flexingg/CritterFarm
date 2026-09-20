@@ -1,5 +1,7 @@
 package com.critterfarm.data
 
+import com.critterfarm.data.local.ChallengeClaimDao
+import com.critterfarm.data.local.ChallengeClaimEntity
 import com.critterfarm.data.local.CritterDao
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.CritterMood
@@ -100,6 +102,33 @@ sealed class QuestClaimResult {
     data object NoInventory : QuestClaimResult()
 }
 
+/** Outcome of tapping Claim on a challenge. */
+sealed class ChallengeClaimResult {
+    data class Claimed(
+        val progress: ChallengeProgress,
+        val coins: Int,
+        val treats: Int,
+        val sparks: Int,
+    ) : ChallengeClaimResult()
+
+    /** Idempotent per (period, challenge) — a second tap pays nothing extra. */
+    data object AlreadyClaimed : ChallengeClaimResult()
+
+    /** The target isn't met yet — nothing to pay out. */
+    data class NotComplete(val progress: ChallengeProgress) : ChallengeClaimResult()
+
+    data object UnknownChallenge : ChallengeClaimResult()
+}
+
+/** Outcome of trying to repair a broken streak. */
+sealed class RepairResult {
+    data class Repaired(val option: RepairOption) : RepairResult()
+
+    data class NotAvailable(val reason: String) : RepairResult()
+
+    data class CannotAfford(val shortfall: Int) : RepairResult()
+}
+
 /**
  * The single source of truth for game state. Wraps the Room DAOs and applies [GameRules] so
  * callers (view models) never touch reward math or persistence directly.
@@ -110,6 +139,7 @@ class GameRepository(
     private val dailySummaryLogDao: DailySummaryLogDao,
     private val questClaimDao: QuestClaimDao,
     private val decorPlacementDao: DecorPlacementDao,
+    private val challengeClaimDao: ChallengeClaimDao,
 ) {
     /** The active critter — the one shown on the farm. Exactly one row is ever active. */
     val critter: Flow<CritterEntity?> = critterDao.observeActive()
@@ -122,6 +152,8 @@ class GameRepository(
 
     fun observeQuestClaims(date: LocalDate): Flow<List<QuestClaimEntity>> =
         questClaimDao.observeForDate(date.toString())
+
+    fun observeChallengeClaims(): Flow<List<ChallengeClaimEntity>> = challengeClaimDao.observeAll()
 
     /** Every critter in the barn, owned or not yet hatched has no row — this is "owned only". */
     fun observeAllCritters(): Flow<List<CritterEntity>> = critterDao.observeAll()
@@ -311,6 +343,83 @@ class GameRepository(
         return QuestClaimResult.Claimed(quest, quest.rewardCoins, quest.rewardTreats)
     }
 
+    // ----------------------------------------------------------------------- challenges ----
+
+    /**
+     * Pays out a weekly/monthly/event challenge. Idempotent per (period, challenge) via
+     * [ChallengeClaimEntity]'s composite key — exactly the [claimQuest] pattern, just keyed to a
+     * wider window. A challenge whose target isn't met yet is refused outright, so nothing can be
+     * banked ahead of the logs that back it up.
+     */
+    suspend fun claimChallenge(spec: ChallengeSpec, today: LocalDate): ChallengeClaimResult {
+        if (ChallengeCatalog.byId(spec.id) == null) return ChallengeClaimResult.UnknownChallenge
+        val logs = dailySummaryLogDao.getAll()
+        val progress = ChallengeRules.progressFor(spec, logs, today)
+
+        if (challengeClaimDao.getClaim(progress.periodKey, spec.id) != null) {
+            return ChallengeClaimResult.AlreadyClaimed
+        }
+        if (!progress.completed) return ChallengeClaimResult.NotComplete(progress)
+
+        val inventory = inventoryDao.getInventory(FarmInventoryEntity.SINGLETON_ID)
+            ?: FarmInventoryEntity.empty()
+        inventoryDao.upsert(
+            inventory.copy(
+                coins = inventory.coins + spec.rewardCoins,
+                treats = inventory.treats + spec.rewardTreats,
+                manaSparks = inventory.manaSparks + spec.rewardSparks,
+            ),
+        )
+        challengeClaimDao.insert(
+            ChallengeClaimEntity(
+                periodKey = progress.periodKey,
+                challengeId = spec.id,
+                claimedAt = System.currentTimeMillis(),
+            ),
+        )
+        return ChallengeClaimResult.Claimed(progress, spec.rewardCoins, spec.rewardTreats, spec.rewardSparks)
+    }
+
+    // ------------------------------------------------------------------- streak repair ----
+
+    /**
+     * Buys back the chain after exactly one missed day. Spends coins and marks the gap as
+     * covered — nothing else changes. In particular this never touches [DailySummaryLogEntity] or
+     * pays XP/coins/treats/sparks for the missed day: the guardrail is that a repair can only ever
+     * cost coins, never manufacture a reward the day itself did not earn.
+     */
+    suspend fun repairStreak(today: LocalDate): RepairResult {
+        val inventory = inventoryDao.getInventory(FarmInventoryEntity.SINGLETON_ID)
+            ?: return RepairResult.NotAvailable("No farm yet.")
+
+        val missedDate = StreakRepairRules.eligibleGap(
+            streakDays = inventory.claimStreak,
+            lastClaimedDate = inventory.lastClaimedDate,
+            lastRepairedGapDate = inventory.lastRepairedGapDate,
+            today = today,
+        ) ?: return RepairResult.NotAvailable("No single missed day to repair right now.")
+
+        val cost = StreakRepairRules.repairCost(inventory.claimStreak)
+        if (inventory.coins < cost) return RepairResult.CannotAfford(cost - inventory.coins)
+
+        val option = StreakRepairRules.canRepair(
+            streakDays = inventory.claimStreak,
+            lastClaimedDate = inventory.lastClaimedDate,
+            lastRepairedGapDate = inventory.lastRepairedGapDate,
+            today = today,
+            coins = inventory.coins,
+        ) ?: return RepairResult.NotAvailable("No single missed day to repair right now.")
+
+        inventoryDao.upsert(
+            inventory.copy(
+                coins = option.coinsAfter,
+                lastClaimedDate = missedDate.toString(),
+                lastRepairedGapDate = missedDate.toString(),
+            ),
+        )
+        return RepairResult.Repaired(option)
+    }
+
     // --------------------------------------------------------------------------- shopping ----
 
     /**
@@ -490,11 +599,11 @@ class GameRepository(
      * the same purse the hats use, and the cell is claimed in the same transaction so a failure
      * cannot leave the player charged for something that is not on their farm.
      */
-    suspend fun placeDecor(itemId: String, cellIndex: Int): PlaceResult {
+    suspend fun placeDecor(itemId: String, cellIndex: Int, today: LocalDate = LocalDate.now()): PlaceResult {
         val inventory = inventoryDao.getInventory(FarmInventoryEntity.SINGLETON_ID)
             ?: return PlaceResult.UnknownItem
         val occupied = decorPlacementDao.getAll().associate { it.cellIndex to it.decorId }
-        val checked = PlacementRules.validate(itemId, cellIndex, inventory.coins, occupied)
+        val checked = PlacementRules.validate(itemId, cellIndex, inventory.coins, occupied, today)
         if (checked !is PlaceResult.Placed) return checked
 
         inventoryDao.upsert(inventory.copy(coins = checked.coinsLeft))

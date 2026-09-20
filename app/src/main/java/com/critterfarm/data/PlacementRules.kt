@@ -1,6 +1,7 @@
 package com.critterfarm.data
 
 import com.critterfarm.data.local.DecorPlacementEntity
+import java.time.LocalDate
 
 /**
  * Outcome of trying to put a decoration on the farm.
@@ -27,6 +28,9 @@ sealed class PlaceResult {
     data class CellOccupied(val cellIndex: Int, val existingId: String) : PlaceResult()
 
     data object UnknownItem : PlaceResult()
+
+    /** The item exists but its event is not running on this date — checked here, not only in the UI. */
+    data class OutOfSeason(val item: DecorItem) : PlaceResult()
 }
 
 /**
@@ -46,16 +50,23 @@ object PlacementRules {
         placements.groupingBy { it.decorId }.eachCount()
 
     /**
-     * Checks a placement in the order a player would hit the problems: does the item exist, is
-     * that square on the board, is something already there, can they pay.
+     * Checks a placement in the order a player would hit the problems: does the item exist, is it
+     * in season, is that square on the board, is something already there, can they pay.
+     *
+     * The event-window check happens here, not only in the shop UI, so an out-of-season event item
+     * cannot be placed by id even if something upstream forgot to filter the catalogue first.
      */
     fun validate(
         itemId: String,
         cellIndex: Int,
         coins: Int,
         occupiedBy: Map<Int, String>,
+        today: LocalDate = LocalDate.now(),
     ): PlaceResult {
         val item = DecorCatalog.item(itemId) ?: return PlaceResult.UnknownItem
+        if (item.eventId != null && !EventCatalog.isActive(item.eventId, today)) {
+            return PlaceResult.OutOfSeason(item)
+        }
         if (!isInRange(cellIndex)) return PlaceResult.CellOutOfRange(cellIndex)
         occupiedBy[cellIndex]?.let { return PlaceResult.CellOccupied(cellIndex, it) }
         if (!canAfford(item, coins)) {

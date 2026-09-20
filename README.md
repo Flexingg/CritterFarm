@@ -54,7 +54,7 @@ answers the same three questions:
 
 ## Screenshots
 
-Captured from the `critterfarm_api35` emulator (Android 15) running **v1.5**. The local database
+Captured from the `critterfarm_api35` emulator (Android 15) running **v1.6**. The local database
 was seeded with demo days so the heatmap, shop, barn, quests, badges and decorations have something to show — the emulator has
 no Health Connect data, so these are not real user stats:
 
@@ -79,6 +79,12 @@ no Health Connect data, so these are not real user stats:
 | Decorating the farm | The 6x4 placement grid | Your week on the farm |
 |---|---|---|
 | ![decor](docs/screenshots/15-v15-decor.png) | ![scene](docs/screenshots/16-v15-decor-placed.png) | ![recap](docs/screenshots/17-v15-recap.png) |
+
+**v1.6 — challenges, seasonal events and streak repair:**
+
+| Challenges + the live event | The streak-repair card |
+|---|---|
+| ![challenges](docs/screenshots/18-v16-challenges.png) | ![repair](docs/screenshots/19-v16-repair.png) |
 
 Earlier layout shots (v1.0 onboarding/navigation) are `01`–`03` in the same folder.
 
@@ -206,6 +212,33 @@ Haptics on the big moments (chest claim, feeding, purchases, evolutions, hatchin
 Canvas confetti burst for claims and evolutions. The burst draws nothing at all when idle, allocates
 nothing inside the draw loop, and never blocks the dialog it celebrates.
 
+## Challenges, events and second chances
+
+The app covered **today** (quests, the chest) and **all time** (badges, history). v1.6 adds the
+missing middle: **a goal with a deadline you can watch run down.**
+
+**Challenges are one engine; a window is just a parameter.** Weekly, monthly and seasonal-event goals
+run through the same maths with a different date range, so there is a single pure function to test
+rather than three. A claim is keyed by `(periodKey, challengeId)` — an ISO week, a `yyyy-MM` month, or
+an event id — so the same challenge pays again next week and can never pay twice in one period.
+
+Ten challenges: five weekly (workout count, active days, a steps total, water-goal days, sleep-goal
+days) and five monthly (bigger totals, weigh-in days, safe-deficit days). Rewards scale with
+difficulty; the deficit challenge scores only against the **existing** target, never a bigger one, so
+no challenge ever pushes anyone to undereat.
+
+**Seasonal events** run for a few weeks each and make decorations scarce: three items are exclusive to
+the Harvest Moon Festival and **do not exist in the catalogue outside its window**. The window is
+enforced inside `PlacementRules`, not just hidden in the UI, so an out-of-season item cannot be
+placed even if its id is passed directly.
+
+**Streak repair** is the one mercy rule, priced honestly at `100 + 25 x streakDays` (capped at 1,000):
+- only for **exactly one missed day** — a missed week is not one bad day
+- only once per gap, and only if the chain was actually alive
+- it restores the **chain**, never the **work**: it pays no coins, treats, sparks or XP for the missed
+  day, and a test plus an on-device check both confirm the stored rewards do not move
+- declining is a normal button, not a failure — *"Let it go"* is right there and never guilted
+
 ## Architecture
 
 Clean Architecture-ish, MVI on the UI layer:
@@ -253,8 +286,8 @@ A signed release APK is published — no toolchain, no Android Studio:
 
 | Where | What |
 |---|---|
-| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.5-release.apk` (recommended) |
-| **In this repo** | [`dist/CritterFarm-1.5-release.apk`](dist/CritterFarm-1.5-release.apk) |
+| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.6-release.apk` (recommended) |
+| **In this repo** | [`dist/CritterFarm-1.6-release.apk`](dist/CritterFarm-1.6-release.apk) |
 
 Install: allow "install unknown apps" for your browser/file manager → open the APK → launch
 **CritterFarm**. Health Connect ships with Android 14+; on older devices grab it from the Play
@@ -263,7 +296,7 @@ sleepy "Dormant Zones".
 
 ```bash
 # confirm you got the same bytes we built
-sha256sum CritterFarm-1.5-release.apk     # compare to dist/CritterFarm-1.5-release.apk.sha256
+sha256sum CritterFarm-1.6-release.apk     # compare to dist/CritterFarm-1.6-release.apk.sha256
 ```
 
 The release APK is signed with a **4096-bit RSA** key (`CN=CritterFarm`, APK Signature Scheme

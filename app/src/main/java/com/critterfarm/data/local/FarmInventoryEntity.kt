@@ -27,6 +27,8 @@ data class FarmInventoryEntity(
     val streakFreezes: Int,
     /** ISO date of the last claim, used to resolve streak continuity. */
     val lastClaimedDate: String?,
+    /** ISO date of the missed day last covered by a streak repair — never repairable twice. */
+    val lastRepairedGapDate: String? = null,
 ) {
     companion object {
         const val SINGLETON_ID = 0L
@@ -44,6 +46,7 @@ data class FarmInventoryEntity(
             bestStreak = 0,
             streakFreezes = 0,
             lastClaimedDate = null,
+            lastRepairedGapDate = null,
         )
     }
 }

@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.critterfarm.data.DecorCatalog
+import com.critterfarm.data.DecorItem
+import com.critterfarm.data.EventCatalog
 import com.critterfarm.data.GameRepository
 import com.critterfarm.data.PlaceResult
 import com.critterfarm.data.local.CritterEntity
@@ -14,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 sealed class DecorIntent {
     /** Arm a decoration so the next square tapped gets it. */
@@ -43,6 +46,17 @@ data class DecorUiState(
         get() = selectedItemId?.let { id ->
             DecorCatalog.item(id)?.let { coins >= it.price }
         } ?: false
+
+    /** Normal decorations, always on offer, cheapest first. */
+    val normalItems: List<DecorItem>
+        get() = DecorCatalog.byPriceOn(LocalDate.now()).filter { it.eventId == null }
+
+    /** Event-exclusive decorations, only present here while their event is actually running. */
+    val eventItems: List<DecorItem>
+        get() = DecorCatalog.byPriceOn(LocalDate.now()).filter { it.eventId != null }
+
+    val activeEventName: String?
+        get() = eventItems.firstOrNull()?.eventId?.let { EventCatalog.byId(it)?.name }
 }
 
 class DecorViewModel(private val gameRepository: GameRepository) : ViewModel() {
@@ -115,6 +129,9 @@ class DecorViewModel(private val gameRepository: GameRepository) : ViewModel() {
                 }
                 is PlaceResult.CellOutOfRange -> _uiState.update {
                     it.copy(message = "That square is off the farm.")
+                }
+                is PlaceResult.OutOfSeason -> _uiState.update {
+                    it.copy(message = "${result.item.name} is only around during its event — check back then.")
                 }
                 PlaceResult.UnknownItem -> _uiState.update {
                     it.copy(message = "That decoration is not in the catalogue.")

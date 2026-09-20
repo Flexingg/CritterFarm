@@ -20,6 +20,9 @@ import com.critterfarm.ui.badges.BadgesViewModelFactory
 import com.critterfarm.ui.barn.BarnScreen
 import com.critterfarm.ui.barn.BarnViewModel
 import com.critterfarm.ui.barn.BarnViewModelFactory
+import com.critterfarm.ui.challenges.ChallengesScreen
+import com.critterfarm.ui.challenges.ChallengesViewModel
+import com.critterfarm.ui.challenges.ChallengesViewModelFactory
 import com.critterfarm.ui.decor.DecorScreen
 import com.critterfarm.ui.decor.DecorViewModel
 import com.critterfarm.ui.decor.DecorViewModelFactory
@@ -47,6 +50,7 @@ private const val ROUTE_HISTORY = "history"
 private const val ROUTE_BADGES = "badges"
 private const val ROUTE_DECOR = "decor"
 private const val ROUTE_RECAP = "recap"
+private const val ROUTE_CHALLENGES = "challenges"
 private const val ARG_FOCUS = "focus"
 
 class MainActivity : ComponentActivity() {
@@ -97,6 +101,19 @@ class MainActivity : ComponentActivity() {
                             onOpenBadges = { navController.navigate(ROUTE_BADGES) },
                             onOpenDecor = { navController.navigate(ROUTE_DECOR) },
                             onOpenRecap = { navController.navigate(ROUTE_RECAP) },
+                            onOpenChallenges = { navController.navigate(ROUTE_CHALLENGES) },
+                        )
+                    }
+
+                    composable(ROUTE_CHALLENGES) {
+                        val viewModel: ChallengesViewModel = viewModel(
+                            factory = ChallengesViewModelFactory(app.gameRepository),
+                        )
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        ChallengesScreen(
+                            uiState = uiState,
+                            onIntent = viewModel::onIntent,
+                            onBack = { navController.popBackStack() },
                         )
                     }
 
