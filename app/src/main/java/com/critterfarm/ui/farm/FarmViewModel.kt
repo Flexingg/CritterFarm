@@ -9,6 +9,10 @@ import com.critterfarm.data.FarmEvent
 import com.critterfarm.data.FeedResult
 import com.critterfarm.data.GameRepository
 import com.critterfarm.data.GameRules
+import com.critterfarm.data.HarmonyRules
+import com.critterfarm.data.HarmonyTier
+import com.critterfarm.data.Insight
+import com.critterfarm.data.InsightRules
 import com.critterfarm.data.Quest
 import com.critterfarm.data.QuestCatalog
 import com.critterfarm.data.QuestClaimResult
@@ -79,6 +83,11 @@ data class FarmUiState(
     val zoneStreaks: Map<GameZone, Int> = emptyMap(),
     val repairOption: RepairOption? = null,
     val repairOfferDismissed: Boolean = false,
+    /** Barn Harmony: every owned critter's stage adds to this, active or not. */
+    val harmony: Int = 0,
+    val harmonyTier: HarmonyTier = HarmonyRules.TIERS.first(),
+    /** What the active critter "says" about recent activity — observational only, never advice. */
+    val insight: Insight? = null,
 ) {
     val dormantZones: List<GameZone>
         get() = GameZone.entries.filter { it.isDormant(grantedPermissions) }
@@ -109,6 +118,11 @@ class FarmViewModel(
     private val healthConnectManager: HealthConnectManager,
 ) : ViewModel() {
 
+    companion object {
+        /** The base daily quest count before Barn Harmony's Working Farm tier adds to it. */
+        private const val BASE_DAILY_QUESTS = 3
+    }
+
     private val _uiState = MutableStateFlow(FarmUiState())
     val uiState: StateFlow<FarmUiState> = _uiState.asStateFlow()
 
@@ -130,6 +144,15 @@ class FarmViewModel(
         }
     }
 
+    private data class LocalCore(
+        val critter: CritterEntity?,
+        val inventory: FarmInventoryEntity?,
+        val todayLog: DailySummaryLogEntity?,
+        val claimedQuestIds: Set<String>,
+        val allLogs: List<DailySummaryLogEntity>,
+        val repairOption: RepairOption?,
+    )
+
     private data class LocalState(
         val critter: CritterEntity?,
         val inventory: FarmInventoryEntity?,
@@ -137,35 +160,59 @@ class FarmViewModel(
         val claimedQuestIds: Set<String>,
         val zoneStreaks: Map<GameZone, Int>,
         val repairOption: RepairOption?,
+        val harmony: Int,
+        val todayQuests: List<Quest>,
+        val insight: Insight,
     )
 
     private fun observeLocalState() {
         viewModelScope.launch {
             val today = LocalDate.now()
             combine(
-                gameRepository.critter,
-                gameRepository.inventory,
-                gameRepository.observeDailyLog(today),
-                gameRepository.observeQuestClaims(today),
-                gameRepository.dailyLogs,
-            ) { critter, inventory, todayLog, claims, allLogs ->
+                gameRepository.observeAllCritters(),
+                combine(
+                    gameRepository.critter,
+                    gameRepository.inventory,
+                    gameRepository.observeDailyLog(today),
+                    gameRepository.observeQuestClaims(today),
+                    gameRepository.dailyLogs,
+                ) { critter, inventory, todayLog, claims, allLogs ->
+                    LocalCore(
+                        critter = critter,
+                        inventory = inventory,
+                        todayLog = todayLog,
+                        claimedQuestIds = claims.map { it.questId }.toSet(),
+                        allLogs = allLogs,
+                        repairOption = inventory?.let {
+                            StreakRepairRules.canRepair(
+                                streakDays = it.claimStreak,
+                                lastClaimedDate = it.lastClaimedDate,
+                                lastRepairedGapDate = it.lastRepairedGapDate,
+                                today = today,
+                                coins = it.coins,
+                            )
+                        },
+                    )
+                },
+            ) { critters, core ->
+                val harmony = HarmonyRules.harmony(critters)
+                val tier = HarmonyRules.tierFor(harmony)
                 LocalState(
-                    critter = critter,
-                    inventory = inventory,
-                    todayLog = todayLog,
-                    claimedQuestIds = claims.map { it.questId }.toSet(),
+                    critter = core.critter,
+                    inventory = core.inventory,
+                    todayLog = core.todayLog,
+                    claimedQuestIds = core.claimedQuestIds,
                     zoneStreaks = GameZone.entries.associateWith { zone ->
-                        StreakRules.currentStreak(allLogs, zone.toMetric(), today)
+                        StreakRules.currentStreak(core.allLogs, zone.toMetric(), today)
                     },
-                    repairOption = inventory?.let {
-                        StreakRepairRules.canRepair(
-                            streakDays = it.claimStreak,
-                            lastClaimedDate = it.lastClaimedDate,
-                            lastRepairedGapDate = it.lastRepairedGapDate,
-                            today = today,
-                            coins = it.coins,
-                        )
-                    },
+                    repairOption = core.repairOption,
+                    harmony = harmony,
+                    todayQuests = QuestsForDay.forDate(
+                        today,
+                        QuestCatalog.ALL,
+                        BASE_DAILY_QUESTS + tier.bonuses.extraDailyQuests,
+                    ),
+                    insight = InsightRules.insightFor(core.critter?.stage ?: 0, core.allLogs, today),
                 )
             }.collect { state ->
                 _uiState.update {
@@ -177,6 +224,10 @@ class FarmViewModel(
                         claimedQuestIds = state.claimedQuestIds,
                         zoneStreaks = state.zoneStreaks,
                         repairOption = state.repairOption,
+                        harmony = state.harmony,
+                        harmonyTier = HarmonyRules.tierFor(state.harmony),
+                        todayQuests = state.todayQuests,
+                        insight = state.insight,
                     )
                 }
             }

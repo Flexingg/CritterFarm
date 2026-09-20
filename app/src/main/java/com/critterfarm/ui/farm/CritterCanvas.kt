@@ -44,14 +44,16 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Stage 0/1/2 grow the whole canvas by this factor. Every drawing measurement below is derived
+ * Stage 0/1/2/3 grow the whole canvas by this factor. Every drawing measurement below is derived
  * from `size` (the canvas's own pixel size), so scaling the canvas uniformly scales body, face
  * and headroom together — the hat-headroom ratio validated for stage 0 (see [drawHat]) survives
  * every stage and species unchanged. This is the "visibly bigger" half of the evolution payoff.
+ * Stage 3 (Mythic) steps up clearly again rather than nudging, per the spec — a summit, not a tweak.
  */
-private fun stageScale(stage: Int): Float = when (stage) {
-    2 -> 1.26f
-    1 -> 1.12f
+private fun stageScale(stage: Int): Float = when {
+    stage >= 3 -> 1.42f
+    stage == 2 -> 1.26f
+    stage == 1 -> 1.12f
     else -> 1f
 }
 
@@ -134,11 +136,16 @@ fun CritterCanvas(
         val center = Offset(size.width / 2f, size.height * 0.63f + bounceOffset)
 
         scale(scale, pivot = center) {
-            // Stage 2's aura sits behind everything else — a flourish, not a distraction.
-            if (stage >= 2) drawAura(center, bodyRadius, species.accentColor)
+            // The aura sits behind everything else — a flourish, not a distraction. Mythic gets
+            // its own bigger, animated version rather than a scaled-up stage-2 aura.
+            when {
+                stage >= 3 -> drawMythicAura(center, bodyRadius, species.accentColor, cycle)
+                stage == 2 -> drawAura(center, bodyRadius, species.accentColor)
+            }
             // Ears/horns/wings sit behind the body so the body circle covers their base, like
             // they're actually attached rather than floating.
             drawSpeciesFeatures(species, center, bodyRadius)
+            if (stage >= 3) drawMythicFlourish(species, center, bodyRadius)
 
             drawCircle(color = bodyColor, radius = bodyRadius, center = center)
 
@@ -414,6 +421,151 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAura(
         center = center,
         style = Stroke(width = bodyRadius * 0.10f),
     )
+}
+
+/** Angles for the Mythic aura's orbiting runes, precomputed once — the draw loop allocates nothing. */
+private const val MYTHIC_RUNE_COUNT = 6
+private val MYTHIC_RUNE_ANGLES = FloatArray(MYTHIC_RUNE_COUNT) { (2f * PI.toFloat() / MYTHIC_RUNE_COUNT) * it }
+
+/**
+ * Stage 3's unmistakable aura: two wide rings plus a handful of runes slowly orbiting the body,
+ * driven by the same [cycle] the idle animation already uses so nothing extra needs to be
+ * allocated per frame — [MYTHIC_RUNE_ANGLES] is the only geometry, computed once above. The
+ * outermost point (rings 1.58×[bodyRadius], runes at 1.55×) stays under the halo hat's
+ * ~0.84×[bodyRadius] headroom budget (see [drawHat]), so the largest hat on the largest stage
+ * never gets crowded off the canvas.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMythicAura(
+    center: Offset,
+    bodyRadius: Float,
+    color: Color,
+    cycle: Float,
+) {
+    drawCircle(
+        color = color.copy(alpha = 0.32f),
+        radius = bodyRadius * 1.40f,
+        center = center,
+        style = Stroke(width = bodyRadius * 0.15f),
+    )
+    drawCircle(
+        color = SunshineYellow.copy(alpha = 0.16f),
+        radius = bodyRadius * 1.58f,
+        center = center,
+        style = Stroke(width = bodyRadius * 0.08f),
+    )
+    val runeDistance = bodyRadius * 1.55f
+    val rotation = cycle * 2f * PI.toFloat()
+    for (i in 0 until MYTHIC_RUNE_COUNT) {
+        val angle = MYTHIC_RUNE_ANGLES[i] + rotation
+        val position = center + Offset(cos(angle) * runeDistance, sin(angle) * runeDistance)
+        drawCircle(color = color.copy(alpha = 0.6f), radius = bodyRadius * 0.09f, center = position)
+        drawCircle(color = SunshineYellow.copy(alpha = 0.8f), radius = bodyRadius * 0.035f, center = position)
+    }
+}
+
+/**
+ * Stage 3's per-species flourish, layered on top of the ordinary [drawSpeciesFeatures] silhouette
+ * so every critter gets a Mythic tell distinct from its regular one. Every measurement stays
+ * within ~0.5×[bodyRadius] above the head — well under the halo's headroom budget — because these
+ * are meant to read alongside a worn hat, not compete with it for space above the head.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMythicFlourish(
+    species: Species,
+    center: Offset,
+    bodyRadius: Float,
+) {
+    when (species.key) {
+        SpeciesCatalog.DRAGON.key -> {
+            // Wings spread wide to both sides.
+            for (side in listOf(-1f, 1f)) {
+                val wing = Path().apply {
+                    moveTo(center.x + side * bodyRadius * 0.3f, center.y - bodyRadius * 0.1f)
+                    lineTo(center.x + side * bodyRadius * 1.9f, center.y - bodyRadius * 0.55f)
+                    lineTo(center.x + side * bodyRadius * 1.6f, center.y + bodyRadius * 0.15f)
+                    lineTo(center.x + side * bodyRadius * 1.85f, center.y + bodyRadius * 0.35f)
+                    lineTo(center.x + side * bodyRadius * 0.35f, center.y + bodyRadius * 0.45f)
+                    close()
+                }
+                drawPath(wing, species.accentColor.copy(alpha = 0.75f))
+            }
+        }
+
+        SpeciesCatalog.AXOLOTL.key -> {
+            // The existing gill frills, redrawn bigger with a soft glow behind them.
+            for (side in listOf(-1f, 1f)) {
+                repeat(3) { i ->
+                    val y = center.y - bodyRadius * 0.15f + i * bodyRadius * 0.22f
+                    val tip = Offset(center.x + side * bodyRadius * 1.5f, y - bodyRadius * 0.18f)
+                    drawCircle(color = species.accentColor.copy(alpha = 0.35f), radius = bodyRadius * 0.16f, center = tip)
+                    drawLine(
+                        color = species.accentColor,
+                        start = Offset(center.x + side * bodyRadius * 0.95f, y),
+                        end = tip,
+                        strokeWidth = bodyRadius * 0.10f,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+        }
+
+        SpeciesCatalog.SLOTH.key -> {
+            // Draped over a branch behind the body.
+            drawLine(
+                color = species.accentColor,
+                start = Offset(center.x - bodyRadius * 1.5f, center.y + bodyRadius * 0.4f),
+                end = Offset(center.x + bodyRadius * 1.5f, center.y + bodyRadius * 0.4f),
+                strokeWidth = bodyRadius * 0.22f,
+                cap = StrokeCap.Round,
+            )
+        }
+
+        SpeciesCatalog.CHICK.key -> {
+            // Sunrise rays fanning out behind, low enough to clear the halo's headroom.
+            repeat(5) { i ->
+                val angle = -PI.toFloat() / 2f + (i - 2) * (PI.toFloat() / 7f)
+                val start = center + Offset(cos(angle) * bodyRadius * 1.1f, sin(angle) * bodyRadius * 1.1f)
+                val end = center + Offset(cos(angle) * bodyRadius * 1.45f, sin(angle) * bodyRadius * 1.45f)
+                drawLine(species.accentColor, start, end, strokeWidth = bodyRadius * 0.08f, cap = StrokeCap.Round)
+            }
+        }
+
+        SpeciesCatalog.BUNNY.key -> {
+            // A little sparkle at each ear tip.
+            val earHeight = bodyRadius * 0.75f
+            for (side in listOf(-1f, 1f)) {
+                val tip = center + Offset(side * bodyRadius * 0.35f, -bodyRadius * 0.1f - earHeight)
+                drawCircle(color = SunshineYellow.copy(alpha = 0.85f), radius = bodyRadius * 0.09f, center = tip)
+            }
+        }
+
+        SpeciesCatalog.BLOB.key -> {
+            // Bioluminescent spots across the body — the only flourish that sits on top of it.
+            val spots = listOf(-0.3f to -0.1f, 0.25f to 0.05f, 0.0f to 0.35f)
+            spots.forEach { (dx, dy) ->
+                drawCircle(
+                    color = species.accentColor.copy(alpha = 0.5f),
+                    radius = bodyRadius * 0.08f,
+                    center = center + Offset(bodyRadius * dx, bodyRadius * dy),
+                )
+            }
+        }
+
+        SpeciesCatalog.PHOENIX.key -> {
+            // A flowing tail of feathers trailing below and behind.
+            val tail = Path().apply {
+                moveTo(center.x - bodyRadius * 0.2f, center.y + bodyRadius * 0.7f)
+                lineTo(center.x - bodyRadius * 0.9f, center.y + bodyRadius * 1.7f)
+                lineTo(center.x - bodyRadius * 0.1f, center.y + bodyRadius * 1.2f)
+                lineTo(center.x + bodyRadius * 0.5f, center.y + bodyRadius * 1.9f)
+                lineTo(center.x + bodyRadius * 0.25f, center.y + bodyRadius * 0.8f)
+                close()
+            }
+            drawPath(tail, species.primaryColor.copy(alpha = 0.8f))
+            drawPath(tail, style = Stroke(width = bodyRadius * 0.04f), color = species.accentColor)
+        }
+
+        else -> Unit
+    }
 }
 
 /**

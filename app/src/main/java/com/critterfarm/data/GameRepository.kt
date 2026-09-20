@@ -51,6 +51,9 @@ sealed class PurchaseResult {
 
     data class CannotAfford(val item: ShopItem) : PurchaseResult()
 
+    /** A Barn-Harmony-gated item (see [ShopItem.minHarmony]) — no amount of currency skips this. */
+    data class Locked(val item: ShopItem, val requiredTier: HarmonyTier) : PurchaseResult()
+
     data object UnknownItem : PurchaseResult()
 
     data object NoInventory : PurchaseResult()
@@ -433,6 +436,12 @@ class GameRepository(
         val owned = GameRules.parseOwnedHatIds(inventory.ownedHatIds)
 
         if (!item.repeatable && item.id in owned) return PurchaseResult.AlreadyOwned
+        if (item.minHarmony > 0) {
+            val harmony = HarmonyRules.harmony(critterDao.getAll())
+            if (harmony < item.minHarmony) {
+                return PurchaseResult.Locked(item, HarmonyRules.tierFor(item.minHarmony))
+            }
+        }
         if (!GameRules.canAfford(item, inventory.coins, inventory.manaSparks)) {
             return PurchaseResult.CannotAfford(item)
         }
@@ -516,7 +525,8 @@ class GameRepository(
             ?: return HatchResult.NoInventory
         val logs = dailySummaryLogDao.getAll()
 
-        if (!HatchRules.isUnlocked(species, logs)) return HatchResult.Locked(species)
+        val harmony = HarmonyRules.harmony(critterDao.getAll())
+        if (!HatchRules.isUnlocked(species, logs, harmony)) return HatchResult.Locked(species)
         if (!HatchRules.canAfford(species, inventory.manaSparks)) {
             return HatchResult.CannotAfford(species, HatchRules.shortfall(species, inventory.manaSparks))
         }
@@ -603,7 +613,15 @@ class GameRepository(
         val inventory = inventoryDao.getInventory(FarmInventoryEntity.SINGLETON_ID)
             ?: return PlaceResult.UnknownItem
         val occupied = decorPlacementDao.getAll().associate { it.cellIndex to it.decorId }
-        val checked = PlacementRules.validate(itemId, cellIndex, inventory.coins, occupied, today)
+        val extraRows = HarmonyRules.tierFor(HarmonyRules.harmony(critterDao.getAll())).bonuses.decorRows
+        val checked = PlacementRules.validate(
+            itemId,
+            cellIndex,
+            inventory.coins,
+            occupied,
+            today,
+            DecorCatalog.cellCount(extraRows),
+        )
         if (checked !is PlaceResult.Placed) return checked
 
         inventoryDao.upsert(inventory.copy(coins = checked.coinsLeft))
@@ -623,7 +641,8 @@ class GameRepository(
      * of the walking you actually did.
      */
     suspend fun removeDecor(cellIndex: Int): Boolean {
-        if (!PlacementRules.isInRange(cellIndex)) return false
+        val extraRows = HarmonyRules.tierFor(HarmonyRules.harmony(critterDao.getAll())).bonuses.decorRows
+        if (!PlacementRules.isInRange(cellIndex, DecorCatalog.cellCount(extraRows))) return false
         decorPlacementDao.removeAt(cellIndex)
         return true
     }

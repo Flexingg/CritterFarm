@@ -14,6 +14,8 @@ data class ShopItem(
     val price: Int,
     val currency: ShopCurrency,
     val kind: ShopItemKind,
+    /** Nonzero only for a Barn-Harmony-gated cosmetic (see [HarmonyRules]) — still only decoration. */
+    val minHarmony: Int = 0,
 ) {
     /** Repeatable items (streak freezes) can be bought again and again. */
     val repeatable: Boolean get() = kind == ShopItemKind.STREAK_FREEZE
@@ -92,6 +94,17 @@ object ShopCatalog {
         kind = ShopItemKind.HAT,
     )
 
+    val AURORA_CROWN = ShopItem(
+        id = "hat_aurora_crown",
+        name = "Aurora Crown",
+        emoji = "🌈",
+        description = "Woven from a Mythic-harmony barn. Every critter you own helped make this.",
+        price = 3_000,
+        currency = ShopCurrency.COINS,
+        kind = ShopItemKind.HAT,
+        minHarmony = 10,
+    )
+
     val STREAK_FREEZE = ShopItem(
         id = "streak_freeze",
         name = "Streak Freeze",
@@ -102,7 +115,7 @@ object ShopCatalog {
         kind = ShopItemKind.STREAK_FREEZE,
     )
 
-    val HATS: List<ShopItem> = listOf(STRAW_HAT, PARTY_HAT, BEANIE, COWBOY_HAT, CROWN, HALO)
+    val HATS: List<ShopItem> = listOf(STRAW_HAT, PARTY_HAT, BEANIE, COWBOY_HAT, CROWN, HALO, AURORA_CROWN)
 
     val ALL: List<ShopItem> = HATS + STREAK_FREEZE
 

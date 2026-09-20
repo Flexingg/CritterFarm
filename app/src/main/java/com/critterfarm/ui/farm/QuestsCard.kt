@@ -71,14 +71,38 @@ fun QuestsCard(
             Column {
                 Text("Today's quests", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Three fresh quests every day, picked from today's date — come back tomorrow " +
-                        "for three more.",
+                    text = questSubtitle(items.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             items.forEach { item -> QuestRow(item = item, onClaim = { onClaim(item.quest.id) }) }
         }
+    }
+}
+
+/** The card must never claim a number the barn does not actually deliver — Working Farm adds one. */
+private const val BASE_QUEST_COUNT = 3
+
+private fun numberWord(count: Int): String = when (count) {
+    1 -> "One"
+    2 -> "Two"
+    3 -> "Three"
+    4 -> "Four"
+    5 -> "Five"
+    6 -> "Six"
+    else -> count.toString()
+}
+
+private fun questSubtitle(count: Int): String {
+    val capitalised = numberWord(count)
+    val lower = capitalised.lowercase()
+    return if (count <= BASE_QUEST_COUNT) {
+        "$capitalised fresh quests every day, picked from today's date — come back tomorrow " +
+            "for $lower more."
+    } else {
+        "$capitalised fresh quests every day — your barn's harmony adds an extra one on top of " +
+            "the usual $BASE_QUEST_COUNT."
     }
 }
 

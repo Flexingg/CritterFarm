@@ -54,7 +54,7 @@ answers the same three questions:
 
 ## Screenshots
 
-Captured from the `critterfarm_api35` emulator (Android 15) running **v1.6**. The local database
+Captured from the `critterfarm_api35` emulator (Android 15) running **v1.7**. The local database
 was seeded with demo days so the heatmap, shop, barn, quests, badges and decorations have something to show — the emulator has
 no Health Connect data, so these are not real user stats:
 
@@ -85,6 +85,12 @@ no Health Connect data, so these are not real user stats:
 | Challenges + the live event | The streak-repair card |
 |---|---|
 | ![challenges](docs/screenshots/18-v16-challenges.png) | ![repair](docs/screenshots/19-v16-repair.png) |
+
+**v1.7 — mythic forms, barn harmony and a critter that learns you:**
+
+| Mythic stage (aura + hat) | The phoenix locked | Mythic Farm unlocked |
+|---|---|---|
+| ![mythic](docs/screenshots/20-v17-mythic-stage3.png) | ![locked](docs/screenshots/21-v17-phoenix-locked.png) | ![crown](docs/screenshots/22-v17-crown.png) |
 
 Earlier layout shots (v1.0 onboarding/navigation) are `01`–`03` in the same folder.
 
@@ -149,6 +155,7 @@ stays unhatchable even with unlimited Sparks.
 |---|---|---|---|
 | Stage 1 | ≥ 5 | 7 days meeting 4+ of the 6 targets | 20 |
 | Stage 2 | ≥ 12 | 21 days meeting 4+ of the 6 targets | 50 |
+| **Stage 3 (Mythic)** | **≥ 25** | **60 days meeting 4+ of the 6 targets** | **120** |
 
 A player always sees the next requirement (`Stage 2 · Level 5/12 · 15/21 goal days · 50 sparks`),
 because an evolution you cannot see coming is not a goal — it is a lottery. Every species changes
@@ -239,6 +246,34 @@ placed even if its id is passed directly.
   day, and a test plus an on-device check both confirm the stored rewards do not move
 - declining is a normal button, not a failure — *"Let it go"* is right there and never guilted
 
+## Barn Harmony — what getting stronger is actually for
+
+Every critter you own contributes `stage + 1` to one derived number, so **breadth (more species) and
+depth (deeper evolutions) both count** and no critter in the barn is dead weight:
+
+| Harmony | Tier | Unlocks |
+|---|---|---|
+| 1 | Quiet Barn 🏡 | base game |
+| 3 | Working Farm 🌾 | **+1 daily quest** — 4 a day instead of 3 |
+| 6 | Thriving Farm 🌻 | **+1 decor row** — the farm scene grows |
+| 10 | Mythic Farm ✨ | the **Aurora Phoenix** species and the **Aurora Crown** hat |
+
+This is the same rule the app has always had, pushed further: **consistency gates capability;
+currency only buys decoration.** A stronger barn gives you *more game to play* — never more health
+reward. `HarmonyRulesTest` asserts the bonus shape per tier exactly, so a future tier cannot quietly
+acquire a reward multiplier.
+
+**Stage 3 — Mythic** sits at `level ≥ 25 · 60 goal-days · 120 sparks`, months rather than weeks:
+a larger silhouette, a **visible animated aura** (rings plus floating sparkles drawn behind the body),
+and a per-species flourish. Stage names — **Hatchling → Awakened → Ascendant → Mythic** — replaced
+"Stage N" everywhere, so the ladder reads at a glance.
+
+**And the critter learns you.** The insight line on the farm deepens with every evolution: cheerful
+nothing at stage 0, a fact about today at stage 1, a **seven-day pattern** at stage 2, and a
+**cross-metric observation** at stage 3 (*"Your sleep tends to be longest on days you walk 8,000+
+steps."*). Observational only — `InsightRulesTest` enumerates every reachable branch at every stage
+and fails the build on "eat", "less", "cut", "should", "cheat", "fail", or any weight-loss framing.
+
 ## Architecture
 
 Clean Architecture-ish, MVI on the UI layer:
@@ -286,8 +321,8 @@ A signed release APK is published — no toolchain, no Android Studio:
 
 | Where | What |
 |---|---|
-| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.6-release.apk` (recommended) |
-| **In this repo** | [`dist/CritterFarm-1.6-release.apk`](dist/CritterFarm-1.6-release.apk) |
+| **[GitHub Releases](https://github.com/Flexingg/CritterFarm/releases/latest)** | `CritterFarm-1.7-release.apk` (recommended) |
+| **In this repo** | [`dist/CritterFarm-1.7-release.apk`](dist/CritterFarm-1.7-release.apk) |
 
 Install: allow "install unknown apps" for your browser/file manager → open the APK → launch
 **CritterFarm**. Health Connect ships with Android 14+; on older devices grab it from the Play
@@ -296,7 +331,7 @@ sleepy "Dormant Zones".
 
 ```bash
 # confirm you got the same bytes we built
-sha256sum CritterFarm-1.6-release.apk     # compare to dist/CritterFarm-1.6-release.apk.sha256
+sha256sum CritterFarm-1.7-release.apk     # compare to dist/CritterFarm-1.7-release.apk.sha256
 ```
 
 The release APK is signed with a **4096-bit RSA** key (`CN=CritterFarm`, APK Signature Scheme

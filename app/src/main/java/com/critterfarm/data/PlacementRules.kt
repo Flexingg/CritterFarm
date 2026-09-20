@@ -39,7 +39,12 @@ sealed class PlaceResult {
  * the screen.
  */
 object PlacementRules {
-    fun isInRange(cellIndex: Int): Boolean = cellIndex in 0 until DecorCatalog.CELL_COUNT
+    /**
+     * [cellCount] defaults to the base grid so every existing caller and test is unaffected; a
+     * Thriving-Farm-or-above harmony tier passes the grown count instead, so out-of-range
+     * behaviour on the base grid never changes while a bigger grid accepts its new cells.
+     */
+    fun isInRange(cellIndex: Int, cellCount: Int = DecorCatalog.CELL_COUNT): Boolean = cellIndex in 0 until cellCount
 
     fun canAfford(item: DecorItem, coins: Int): Boolean = coins >= item.price
 
@@ -62,12 +67,13 @@ object PlacementRules {
         coins: Int,
         occupiedBy: Map<Int, String>,
         today: LocalDate = LocalDate.now(),
+        cellCount: Int = DecorCatalog.CELL_COUNT,
     ): PlaceResult {
         val item = DecorCatalog.item(itemId) ?: return PlaceResult.UnknownItem
         if (item.eventId != null && !EventCatalog.isActive(item.eventId, today)) {
             return PlaceResult.OutOfSeason(item)
         }
-        if (!isInRange(cellIndex)) return PlaceResult.CellOutOfRange(cellIndex)
+        if (!isInRange(cellIndex, cellCount)) return PlaceResult.CellOutOfRange(cellIndex)
         occupiedBy[cellIndex]?.let { return PlaceResult.CellOccupied(cellIndex, it) }
         if (!canAfford(item, coins)) {
             return PlaceResult.CannotAfford(item, shortfall(item, coins), coins)

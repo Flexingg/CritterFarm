@@ -62,4 +62,39 @@ class QuestRotationTest {
             day1 != day2 || day2 != day3 || day1 != day3,
         )
     }
+
+    // ------------------------------------------------------- Barn Harmony's extra quest slot ----
+
+    @Test
+    fun `a bigger count still returns that many distinct quests`() {
+        val quests = QuestsForDay.forDate(LocalDate.of(2026, 9, 19), pool, count = 4)
+        assertEquals(4, quests.size)
+        assertEquals(quests.size, quests.map { it.id }.distinct().size)
+    }
+
+    @Test
+    fun `four quests are stable for a given date`() {
+        val date = LocalDate.of(2026, 9, 19)
+        val first = QuestsForDay.forDate(date, pool, count = 4)
+        val second = QuestsForDay.forDate(date, pool, count = 4)
+        assertEquals(first.map { it.id }, second.map { it.id })
+    }
+
+    @Test
+    fun `four quests differ across consecutive days`() {
+        val base = LocalDate.of(2026, 9, 19)
+        val day1 = QuestsForDay.forDate(base, pool, count = 4).map { it.id }
+        val day2 = QuestsForDay.forDate(base.plusDays(1), pool, count = 4).map { it.id }
+        val day3 = QuestsForDay.forDate(base.plusDays(2), pool, count = 4).map { it.id }
+        assertTrue(
+            "four-quest days should not all pick the exact same four quests",
+            day1 != day2 || day2 != day3 || day1 != day3,
+        )
+    }
+
+    @Test
+    fun `count defaults to three so every existing caller is unaffected`() {
+        val quests = QuestsForDay.forDate(LocalDate.of(2026, 9, 19), pool)
+        assertEquals(3, quests.size)
+    }
 }

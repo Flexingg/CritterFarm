@@ -47,6 +47,7 @@ fun FarmScene(
     placements: List<DecorPlacementEntity>,
     selectedItemId: String?,
     onCellTap: (Int) -> Unit,
+    rows: Int = DecorCatalog.GRID_ROWS,
     modifier: Modifier = Modifier,
 ) {
     val byCell = remember(placements) { placements.associateBy { it.cellIndex } }
@@ -54,10 +55,10 @@ fun FarmScene(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(DecorCatalog.GRID_COLUMNS.toFloat() / DecorCatalog.GRID_ROWS.toFloat()),
+            .aspectRatio(DecorCatalog.GRID_COLUMNS.toFloat() / rows.toFloat()),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            repeat(DecorCatalog.GRID_ROWS) { row ->
+            repeat(rows) { row ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

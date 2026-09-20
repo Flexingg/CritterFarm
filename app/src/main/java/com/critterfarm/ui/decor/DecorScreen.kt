@@ -115,6 +115,7 @@ fun DecorScreen(
                     placements = uiState.placements,
                     selectedItemId = uiState.selectedItemId,
                     onCellTap = { onIntent(DecorIntent.TapCell(it)) },
+                    rows = uiState.rows,
                 )
             }
 

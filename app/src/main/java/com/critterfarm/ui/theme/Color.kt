@@ -22,6 +22,8 @@ val DormantGraySurface = Color(0xFFEDEFEC)
 val CreamBackground = Color(0xFFFFFBF2)
 val InkBrown = Color(0xFF3D2B1F)
 val ErrorRed = Color(0xFFBA1A1A)
+val AuroraPurple = Color(0xFF9B5DE5)
+val AuroraTeal = Color(0xFF00C2A8)
 
 // Night variants, used for the dark color scheme so the palette stays cheerful (not just
 // grayscale) after sunset.

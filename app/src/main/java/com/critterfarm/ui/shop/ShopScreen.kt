@@ -151,6 +151,7 @@ private fun HatCard(item: ShopItem, uiState: ShopUiState, onIntent: (ShopIntent)
     val owned = item.id in uiState.ownedHatIds
     val equipped = uiState.equippedHatId == item.id
     val affordable = uiState.canAfford(item)
+    val locked = uiState.isHarmonyLocked(item)
 
     Card(
         colors = CardDefaults.cardColors(
@@ -174,8 +175,18 @@ private fun HatCard(item: ShopItem, uiState: ShopUiState, onIntent: (ShopIntent)
                 style = MaterialTheme.typography.labelLarge,
                 color = if (owned) DormantGray else MaterialTheme.colorScheme.onSurface,
             )
+            if (locked) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Reach Mythic Farm (${item.minHarmony} harmony) to unlock.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(modifier = Modifier.height(6.dp))
             when {
+                locked -> Button(onClick = {}, enabled = false) { Text("🔒 Locked") }
+
                 equipped -> OutlinedButton(onClick = { onIntent(ShopIntent.Equip(null)) }) {
                     Text("Wearing ✓")
                 }

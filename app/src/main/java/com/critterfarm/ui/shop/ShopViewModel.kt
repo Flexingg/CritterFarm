@@ -5,11 +5,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.critterfarm.data.GameRepository
 import com.critterfarm.data.GameRules
+import com.critterfarm.data.HarmonyRules
 import com.critterfarm.data.PurchaseResult
 import com.critterfarm.data.ShopCatalog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -30,9 +32,14 @@ data class ShopUiState(
     val equippedHatId: String? = null,
     val streakFreezes: Int = 0,
     val message: String? = null,
+    /** Barn Harmony, so a Mythic-gated item (the Aurora Crown) can show a lock note in-place. */
+    val harmony: Int = 0,
 ) {
     fun canAfford(item: com.critterfarm.data.ShopItem): Boolean =
         GameRules.canAfford(item, coins, manaSparks)
+
+    /** True only for a Barn-Harmony-gated item below its required tier — currency never helps here. */
+    fun isHarmonyLocked(item: com.critterfarm.data.ShopItem): Boolean = harmony < item.minHarmony
 
     /** How much more the player needs, for the "3 days of steps to go" nudge. */
     fun shortfallFor(item: com.critterfarm.data.ShopItem): Int = when (item.currency) {
@@ -52,18 +59,23 @@ class ShopViewModel(private val gameRepository: GameRepository) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            gameRepository.inventory.collect { inventory ->
-                _uiState.update {
-                    it.copy(
-                        coins = inventory?.coins ?: 0,
-                        manaSparks = inventory?.manaSparks ?: 0,
-                        treats = inventory?.treats ?: 0,
-                        ownedHatIds = GameRules.parseOwnedHatIds(inventory?.ownedHatIds ?: ""),
-                        equippedHatId = inventory?.equippedHatId,
-                        streakFreezes = inventory?.streakFreezes ?: 0,
-                    )
+            combine(
+                gameRepository.inventory,
+                gameRepository.observeAllCritters(),
+            ) { inventory, critters -> inventory to HarmonyRules.harmony(critters) }
+                .collect { (inventory, harmony) ->
+                    _uiState.update {
+                        it.copy(
+                            coins = inventory?.coins ?: 0,
+                            manaSparks = inventory?.manaSparks ?: 0,
+                            treats = inventory?.treats ?: 0,
+                            ownedHatIds = GameRules.parseOwnedHatIds(inventory?.ownedHatIds ?: ""),
+                            equippedHatId = inventory?.equippedHatId,
+                            streakFreezes = inventory?.streakFreezes ?: 0,
+                            harmony = harmony,
+                        )
+                    }
                 }
-            }
         }
     }
 
@@ -85,6 +97,9 @@ class ShopViewModel(private val gameRepository: GameRepository) : ViewModel() {
                         "🧊 Streak Freeze stashed. It spends itself the next time you miss a day."
                 }
                 PurchaseResult.AlreadyOwned -> "You already own that one."
+                is PurchaseResult.Locked ->
+                    "Not yet — reach ${result.requiredTier.name} (${result.requiredTier.minHarmony} " +
+                        "harmony) to unlock ${result.item.name}."
                 is PurchaseResult.CannotAfford -> {
                     val short = _uiState.value.shortfallFor(result.item)
                     val purse = if (result.item.currency == com.critterfarm.data.ShopCurrency.COINS) {

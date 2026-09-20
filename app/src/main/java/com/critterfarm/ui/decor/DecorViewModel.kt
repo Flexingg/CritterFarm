@@ -7,6 +7,7 @@ import com.critterfarm.data.DecorCatalog
 import com.critterfarm.data.DecorItem
 import com.critterfarm.data.EventCatalog
 import com.critterfarm.data.GameRepository
+import com.critterfarm.data.HarmonyRules
 import com.critterfarm.data.PlaceResult
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.DecorPlacementEntity
@@ -36,6 +37,8 @@ data class DecorUiState(
     val equippedHatId: String? = null,
     val selectedItemId: String? = null,
     val message: String? = null,
+    /** Barn Harmony's Thriving Farm tier (and above) grows the grid — see [DecorCatalog.cellCount]. */
+    val rows: Int = DecorCatalog.GRID_ROWS,
 ) {
     /** How many of each decoration are standing — shown as a count on the shop cards. */
     val countsByItem: Map<String, Int> get() = placements.groupingBy { it.decorId }.eachCount()
@@ -63,24 +66,42 @@ class DecorViewModel(private val gameRepository: GameRepository) : ViewModel() {
     private val _uiState = MutableStateFlow(DecorUiState())
     val uiState: StateFlow<DecorUiState> = _uiState.asStateFlow()
 
+    private data class LocalState(
+        val coins: Int,
+        val placements: List<DecorPlacementEntity>,
+        val critter: CritterEntity?,
+        val equippedHatId: String?,
+        val rows: Int,
+    )
+
     init {
         viewModelScope.launch {
             combine(
                 gameRepository.inventory,
                 gameRepository.decorPlacements,
                 gameRepository.critter,
-            ) { inventory, placements, critter -> Triple(inventory, placements, critter) }
-                .collect { (inventory, placements, critter) ->
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            coins = inventory?.coins ?: 0,
-                            placements = placements,
-                            critter = critter,
-                            equippedHatId = inventory?.equippedHatId,
-                        )
-                    }
+                gameRepository.observeAllCritters(),
+            ) { inventory, placements, critter, allCritters ->
+                val extraRows = HarmonyRules.tierFor(HarmonyRules.harmony(allCritters)).bonuses.decorRows
+                LocalState(
+                    coins = inventory?.coins ?: 0,
+                    placements = placements,
+                    critter = critter,
+                    equippedHatId = inventory?.equippedHatId,
+                    rows = DecorCatalog.GRID_ROWS + extraRows,
+                )
+            }.collect { state ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        coins = state.coins,
+                        placements = state.placements,
+                        critter = state.critter,
+                        equippedHatId = state.equippedHatId,
+                        rows = state.rows,
+                    )
                 }
+            }
         }
     }
 

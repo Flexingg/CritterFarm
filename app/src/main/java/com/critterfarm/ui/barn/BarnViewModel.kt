@@ -7,6 +7,8 @@ import com.critterfarm.data.EvolutionRequirement
 import com.critterfarm.data.EvolutionRules
 import com.critterfarm.data.EvolveResult
 import com.critterfarm.data.GameRepository
+import com.critterfarm.data.HarmonyRules
+import com.critterfarm.data.HarmonyTier
 import com.critterfarm.data.HatchResult
 import com.critterfarm.data.HatchRules
 import com.critterfarm.data.Species
@@ -51,6 +53,9 @@ data class BarnUiState(
     val evolutionRequirement: EvolutionRequirement? = null,
     val evolutionCelebration: Pair<CritterEntity, Int>? = null,
     val message: String? = null,
+    /** Barn Harmony: every owned critter's stage adds to this, active or not. */
+    val harmony: Int = 0,
+    val harmonyTier: HarmonyTier = HarmonyRules.TIERS.first(),
 )
 
 /**
@@ -66,6 +71,7 @@ class BarnViewModel(private val gameRepository: GameRepository) : ViewModel() {
         val manaSparks: Int,
         val hatchCards: List<HatchCardUi>,
         val evolutionRequirement: EvolutionRequirement?,
+        val harmony: Int,
     )
 
     private val _uiState = MutableStateFlow(BarnUiState())
@@ -80,8 +86,9 @@ class BarnViewModel(private val gameRepository: GameRepository) : ViewModel() {
                 gameRepository.dailyLogs,
             ) { critters, active, inventory, logs ->
                 val manaSparks = inventory?.manaSparks ?: 0
+                val harmony = HarmonyRules.harmony(critters)
                 val hatchCards = SpeciesCatalog.ALL.map { species ->
-                    val progress = HatchRules.unlockProgress(species, logs)
+                    val progress = HatchRules.unlockProgress(species, logs, harmony)
                     HatchCardUi(
                         species = species,
                         unlocked = progress.unlocked,
@@ -90,10 +97,10 @@ class BarnViewModel(private val gameRepository: GameRepository) : ViewModel() {
                         shortfall = HatchRules.shortfall(species, manaSparks),
                     )
                 }
-                val requirement = active?.takeIf { it.stage < 2 }?.let {
+                val requirement = active?.takeIf { it.stage < EvolutionRules.MAX_STAGE }?.let {
                     EvolutionRules.requirementFor(it.stage + 1, logs, it, manaSparks)
                 }
-                Combined(critters, active?.id, manaSparks, hatchCards, requirement)
+                Combined(critters, active?.id, manaSparks, hatchCards, requirement, harmony)
             }.collect { combined ->
                 _uiState.update { current ->
                     current.copy(
@@ -103,6 +110,8 @@ class BarnViewModel(private val gameRepository: GameRepository) : ViewModel() {
                         manaSparks = combined.manaSparks,
                         hatchCards = combined.hatchCards,
                         evolutionRequirement = combined.evolutionRequirement,
+                        harmony = combined.harmony,
+                        harmonyTier = HarmonyRules.tierFor(combined.harmony),
                     )
                 }
             }

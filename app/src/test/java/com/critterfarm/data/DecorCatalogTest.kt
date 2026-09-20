@@ -80,4 +80,18 @@ class DecorCatalogTest {
         assertFalse(PlacementRules.isInRange(24))
         assertFalse(PlacementRules.isInRange(25))
     }
+
+    // -------------------------------------------------------- Barn Harmony's grown grid ----
+
+    @Test
+    fun `cellCount grows by a whole row per extra row`() {
+        assertEquals(DecorCatalog.CELL_COUNT, DecorCatalog.cellCount(0))
+        assertEquals(30, DecorCatalog.cellCount(1))
+    }
+
+    @Test
+    fun `the base grid's out-of-range behaviour is unchanged by the new parameter's default`() {
+        assertFalse(PlacementRules.isInRange(DecorCatalog.CELL_COUNT, DecorCatalog.CELL_COUNT))
+        assertTrue(PlacementRules.isInRange(DecorCatalog.CELL_COUNT, DecorCatalog.cellCount(1)))
+    }
 }

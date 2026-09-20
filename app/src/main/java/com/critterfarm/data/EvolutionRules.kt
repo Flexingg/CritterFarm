@@ -31,11 +31,15 @@ object EvolutionRules {
     /** A day only counts toward evolution if it met at least this many of the six daily targets. */
     const val GOAL_TARGET_THRESHOLD = 4
 
+    /** The last real stage — there is no stage 4, and [requirementFor] clamps rather than throws. */
+    const val MAX_STAGE = 3
+
     private data class StageRule(val minLevel: Int, val minGoalDays: Int, val sparkCost: Int)
 
     private val STAGE_RULES = mapOf(
         1 to StageRule(minLevel = 5, minGoalDays = 7, sparkCost = 20),
         2 to StageRule(minLevel = 12, minGoalDays = 21, sparkCost = 50),
+        3 to StageRule(minLevel = 25, minGoalDays = 60, sparkCost = 120),
     )
 
     fun requirementFor(
@@ -52,7 +56,7 @@ object EvolutionRules {
                 sparkCost = 0,
                 behaviorMet = false,
                 met = false,
-                progressText = "No further evolution beyond stage 2.",
+                progressText = "No further evolution beyond stage $MAX_STAGE.",
             )
 
         val goalDays = logs.count { HistoryRules.metTargets(it) >= GOAL_TARGET_THRESHOLD }
@@ -71,4 +75,15 @@ object EvolutionRules {
             progressText = progressText,
         )
     }
+}
+
+/**
+ * The one place a stage number becomes a word — the barn, the farm header and the evolution
+ * dialog all read through here so "Stage 3" and "Mythic" can never drift apart.
+ */
+object StageNames {
+    private val NAMES = listOf("Hatchling", "Awakened", "Ascendant", "Mythic")
+
+    /** Clamps rather than throws: any stage past the ceiling still reads as the top name. */
+    fun forStage(stage: Int): String = NAMES.getOrElse(stage) { NAMES.last() }
 }

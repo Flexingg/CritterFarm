@@ -1,6 +1,8 @@
 package com.critterfarm.data
 
 import androidx.compose.ui.graphics.Color
+import com.critterfarm.ui.theme.AuroraPurple
+import com.critterfarm.ui.theme.AuroraTeal
 import com.critterfarm.ui.theme.BerryPink
 import com.critterfarm.ui.theme.BunnyCream
 import com.critterfarm.ui.theme.DormantGray
@@ -17,6 +19,10 @@ import com.critterfarm.ui.theme.TreatBrown
  * One species in the barn: what it looks like, what it costs to hatch, and what earns the right
  * to hatch it. `unlockNote` is shown verbatim on a locked hatch card, so it must read as an
  * instruction ("do X to unlock"), not a status.
+ *
+ * [minHarmony] is a second, independent unlock gate on top of the usual log-based one (see
+ * [HatchRules]): a nonzero value means the species also needs that much [HarmonyRules.harmony],
+ * so no amount of Mana Sparks or logged behaviour can skip it early. Zero means no such gate.
  */
 data class Species(
     val key: String,
@@ -27,6 +33,7 @@ data class Species(
     val primaryColor: Color,
     val accentColor: Color,
     val unlockNote: String,
+    val minHarmony: Int = 0,
 )
 
 /**
@@ -103,8 +110,25 @@ object SpeciesCatalog {
         unlockNote = "Meet the sleep target on ${HatchRules.SLOTH_DAYS} days to unlock.",
     )
 
+    /**
+     * The seventh critter, reserved for a fully-harmonious barn. Its unlock is not satisfiable
+     * by logs alone — see [minHarmony] — so it is genuinely locked below Mythic harmony (10),
+     * no matter how many Mana Sparks are stockpiled.
+     */
+    val PHOENIX = Species(
+        key = "phoenix",
+        displayName = "Aurora Phoenix",
+        emoji = "🔥",
+        blurb = "Legend says it only nests where every other critter is already thriving.",
+        hatchCostSparks = 120,
+        primaryColor = AuroraPurple,
+        accentColor = AuroraTeal,
+        unlockNote = "Reach Mythic Farm harmony (10) to unlock — sparks alone can't buy this one.",
+        minHarmony = 10,
+    )
+
     /** Cost/difficulty ladder order — also the order the Hatch section renders in. */
-    val ALL: List<Species> = listOf(BLOB, BUNNY, CHICK, AXOLOTL, DRAGON, SLOTH)
+    val ALL: List<Species> = listOf(BLOB, BUNNY, CHICK, AXOLOTL, DRAGON, SLOTH, PHOENIX)
 
     fun bySpecies(key: String): Species? = ALL.firstOrNull { it.key == key }
 }

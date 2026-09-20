@@ -43,9 +43,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.critterfarm.data.FarmEvent
 import com.critterfarm.data.GameRules
+import com.critterfarm.data.HarmonyRules
+import com.critterfarm.data.HarmonyTier
+import com.critterfarm.data.Insight
 import com.critterfarm.data.Quest
 import com.critterfarm.data.RepairOption
 import com.critterfarm.data.SpeciesCatalog
+import com.critterfarm.data.StageNames
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.DailySummaryLogEntity
 import com.critterfarm.data.local.FarmInventoryEntity
@@ -125,6 +129,9 @@ fun FarmScreen(
                 activeEvent = uiState.activeEvent,
                 eventDaysLeft = uiState.eventDaysLeft,
                 repairOption = if (uiState.showRepairCard) uiState.repairOption else null,
+                harmony = uiState.harmony,
+                harmonyTier = uiState.harmonyTier,
+                insight = uiState.insight,
                 onClaim = { onIntent(FarmIntent.ClaimDailyTurn) },
                 onFeed = { onIntent(FarmIntent.FeedCritter) },
                 onClaimQuest = { questId -> onIntent(FarmIntent.ClaimQuest(questId)) },
@@ -201,6 +208,9 @@ private fun FarmContent(
     activeEvent: FarmEvent?,
     eventDaysLeft: Int,
     repairOption: RepairOption?,
+    harmony: Int,
+    harmonyTier: HarmonyTier,
+    insight: Insight?,
     onClaim: () -> Unit,
     onFeed: () -> Unit,
     onClaimQuest: (String) -> Unit,
@@ -221,7 +231,15 @@ private fun FarmContent(
             contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 120.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item { HeaderRow(critter = critter, inventory = inventory, isSyncing = isSyncing) }
+            item {
+                HeaderRow(
+                    critter = critter,
+                    inventory = inventory,
+                    isSyncing = isSyncing,
+                    harmony = harmony,
+                    harmonyTier = harmonyTier,
+                )
+            }
 
             activeEvent?.let { event ->
                 item {
@@ -260,6 +278,7 @@ private fun FarmContent(
                     critter = critter,
                     hatId = inventory?.equippedHatId,
                     treats = inventory?.treats ?: 0,
+                    insight = insight,
                     onFeed = onFeed,
                     onOpenShop = onOpenShop,
                 )
@@ -328,7 +347,13 @@ private fun FarmContent(
 }
 
 @Composable
-private fun HeaderRow(critter: CritterEntity, inventory: FarmInventoryEntity?, isSyncing: Boolean) {
+private fun HeaderRow(
+    critter: CritterEntity,
+    inventory: FarmInventoryEntity?,
+    isSyncing: Boolean,
+    harmony: Int,
+    harmonyTier: HarmonyTier,
+) {
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -339,7 +364,8 @@ private fun HeaderRow(critter: CritterEntity, inventory: FarmInventoryEntity?, i
                 Text(critter.name, style = MaterialTheme.typography.headlineMedium)
                 val species = SpeciesCatalog.bySpecies(critter.species)
                 Text(
-                    "Level ${critter.level} · ${species?.displayName ?: critter.species} · Stage ${critter.stage}",
+                    "Level ${critter.level} · ${species?.displayName ?: critter.species} · " +
+                        StageNames.forStage(critter.stage),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -359,6 +385,20 @@ private fun HeaderRow(critter: CritterEntity, inventory: FarmInventoryEntity?, i
             CurrencyPill(emoji = "🍬", value = inventory?.treats ?: 0)
             CurrencyPill(emoji = "🔮", value = inventory?.manaSparks ?: 0)
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        HarmonyChip(harmony = harmony, tier = harmonyTier)
+    }
+}
+
+/** "Thriving Farm · 7 / 10 harmony" — what getting stronger is actually for, at a glance. */
+@Composable
+private fun HarmonyChip(harmony: Int, tier: HarmonyTier) {
+    Surface(shape = RoundedCornerShape(50), color = SlumberLavender.copy(alpha = 0.18f)) {
+        Text(
+            "${tier.emoji} ${tier.name} · ${HarmonyRules.progressToNext(harmony)}",
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
     }
 }
 
@@ -500,6 +540,7 @@ private fun CritterStage(
     critter: CritterEntity,
     hatId: String?,
     treats: Int,
+    insight: Insight?,
     onFeed: () -> Unit,
     onOpenShop: () -> Unit,
 ) {
@@ -522,6 +563,16 @@ private fun CritterStage(
                 "Hunger ${critter.hunger} · Happiness ${critter.happiness}",
                 style = MaterialTheme.typography.labelMedium,
             )
+            if (insight != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "${critter.name} says: ${insight.text}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
+            }
             Spacer(modifier = Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(onClick = onFeed, enabled = treats > 0) {

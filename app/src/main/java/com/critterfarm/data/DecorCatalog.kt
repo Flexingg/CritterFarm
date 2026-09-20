@@ -42,6 +42,9 @@ object DecorCatalog {
     const val GRID_ROWS = 4
     const val CELL_COUNT = GRID_COLUMNS * GRID_ROWS
 
+    /** The grid Barn Harmony's Thriving Farm tier (and above) grows into — more room, same rules. */
+    fun cellCount(extraRows: Int): Int = (GRID_ROWS + extraRows) * GRID_COLUMNS
+
     /**
      * Eleven items from 100 to 1,500 coins, so decorating is a long-term sink rather than
      * something you finish in a week: 100 steps earn a single coin, so the farmhouse at the

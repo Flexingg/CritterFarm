@@ -17,7 +17,12 @@ object HatchRules {
     const val DRAGON_DAYS = 10
     const val SLOTH_DAYS = 7
 
-    fun unlockProgress(species: Species, logs: List<DailySummaryLogEntity>): UnlockProgress =
+    /**
+     * [harmony] gates species like the Aurora Phoenix whose unlock is not a function of logs at
+     * all (see [Species.minHarmony]). It defaults to 0 — locked — so a caller that forgets to
+     * pass the real number never accidentally unlocks a harmony-gated species.
+     */
+    fun unlockProgress(species: Species, logs: List<DailySummaryLogEntity>, harmony: Int = 0): UnlockProgress =
         when (species.key) {
             SpeciesCatalog.BLOB.key -> UnlockProgress(unlocked = true, progressText = "Always available")
 
@@ -50,11 +55,16 @@ object HatchRules {
                 noun = "days with sleep met",
             )
 
+            SpeciesCatalog.PHOENIX.key -> UnlockProgress(
+                unlocked = harmony >= species.minHarmony,
+                progressText = "$harmony/${species.minHarmony} harmony",
+            )
+
             else -> UnlockProgress(unlocked = false, progressText = "Unknown species")
         }
 
-    fun isUnlocked(species: Species, logs: List<DailySummaryLogEntity>): Boolean =
-        unlockProgress(species, logs).unlocked
+    fun isUnlocked(species: Species, logs: List<DailySummaryLogEntity>, harmony: Int = 0): Boolean =
+        unlockProgress(species, logs, harmony).unlocked
 
     fun canAfford(species: Species, manaSparks: Int): Boolean = manaSparks >= species.hatchCostSparks
 

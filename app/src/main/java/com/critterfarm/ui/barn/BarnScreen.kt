@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -41,11 +42,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.critterfarm.data.EvolutionRequirement
+import com.critterfarm.data.HarmonyRules
+import com.critterfarm.data.HarmonyTier
 import com.critterfarm.data.SpeciesCatalog
+import com.critterfarm.data.StageNames
 import com.critterfarm.data.local.CritterEntity
 import com.critterfarm.data.local.CritterMood
 import com.critterfarm.ui.theme.DormantGray
 import com.critterfarm.ui.theme.PastureGreenLight
+import com.critterfarm.ui.theme.SlumberLavender
 import com.critterfarm.ui.theme.SproutGreen
 
 /**
@@ -122,6 +127,11 @@ fun BarnScreen(
                 )
             }
 
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Barn Harmony") }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                HarmonyCard(harmony = uiState.harmony, currentTier = uiState.harmonyTier)
+            }
+
             item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Hatch a new critter") }
             items(uiState.hatchCards, span = { GridItemSpan(1) }) { card ->
                 HatchCard(card = card, onHatch = { onIntent(BarnIntent.Hatch(card.species.key)) })
@@ -182,7 +192,7 @@ private fun CritterCard(critter: CritterEntity, isActive: Boolean, onSetActive: 
             Spacer(modifier = Modifier.height(6.dp))
             Text(critter.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(
-                "Lv ${critter.level} · Stage ${critter.stage} · ${moodEmoji(critter.mood)}",
+                "Lv ${critter.level} · ${StageNames.forStage(critter.stage)} · ${moodEmoji(critter.mood)}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -213,7 +223,7 @@ private fun EvolveCard(requirement: EvolutionRequirement?, onEvolve: () -> Unit)
                 return@Column
             }
             Text(
-                "Stage ${requirement.stage} is within reach",
+                "${StageNames.forStage(requirement.stage)} is within reach",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
@@ -292,11 +302,60 @@ private fun EvolutionCelebrationDialog(critter: CritterEntity, newStage: Int, on
         },
         text = {
             Text(
-                "${critter.name} just reached Stage $newStage — the consistency behind it is the real prize.",
+                "${critter.name} just reached ${StageNames.forStage(newStage)} — the consistency " +
+                    "behind it is the real prize.",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
         },
     )
+}
+
+/**
+ * Every tier on the ladder, so the player can see exactly what another evolution or another
+ * hatched species buys them — not just the one they are closest to.
+ */
+@Composable
+private fun HarmonyCard(harmony: Int, currentTier: HarmonyTier) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "${currentTier.emoji} ${currentTier.name} · $harmony harmony",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                currentTier.blurb,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            HarmonyRules.TIERS.forEach { tier ->
+                val reached = harmony >= tier.minHarmony
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(tier.emoji, style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "${tier.name} · ${tier.minHarmony}+ harmony",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (reached) SlumberLavender else MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(tier.blurb, style = MaterialTheme.typography.labelSmall)
+                    }
+                    Text(
+                        if (reached) "✓" else "🔒",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (reached) SproutGreen else DormantGray,
+                    )
+                }
+            }
+        }
+    }
 }
